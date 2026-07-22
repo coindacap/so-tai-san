@@ -311,7 +311,20 @@ interface Actions {
   /** Xóa vĩnh viễn (thùng rác) */
   hardDeleteLoan: (id: string) => void
 
-  deleteTransaction: (id: string) => void
+  /**
+   * Xóa giao dịch + leg cặp (pairId hoặc heuristic).
+   * Chụp safety backup trước khi xóa.
+   */
+  deleteTransaction: (
+    id: string,
+  ) => { ok: true; removed: number } | { ok: false; error: string }
+  /** Sửa ghi chú (áp cả cặp nếu có pairId) */
+  updateTransactionNote: (
+    id: string,
+    note: string,
+  ) => { ok: true } | { ok: false; error: string }
+  /** Tìm các id cùng cặp (để UI) */
+  findPairIds: (id: string) => string[]
   exportJson: () => string
   importJson: (
     raw: string,
@@ -363,14 +376,37 @@ function snapshotCounts(s: {
 type Store = AppState & NavState & Actions
 
 function pairTx(
-  primary: Omit<Transaction, 'id' | 'createdAt' | 'updatedAt'>,
-  counter: Omit<Transaction, 'id' | 'createdAt' | 'updatedAt'>,
+  primary: Omit<Transaction, 'id' | 'createdAt' | 'updatedAt' | 'pairId'>,
+  counter: Omit<Transaction, 'id' | 'createdAt' | 'updatedAt' | 'pairId'>,
 ): Transaction[] {
   const t = nowIso()
+  const pairId = uid()
   return [
-    { ...primary, id: uid(), createdAt: t, updatedAt: t },
-    { ...counter, id: uid(), createdAt: t, updatedAt: t },
+    { ...primary, id: uid(), pairId, createdAt: t, updatedAt: t },
+    { ...counter, id: uid(), pairId, createdAt: t, updatedAt: t },
   ]
+}
+
+/** Ids cùng cặp: pairId hoặc heuristic (giao dịch cũ không có pairId) */
+function resolvePairIds(txs: Transaction[], id: string): string[] {
+  const tx = txs.find((t) => t.id === id)
+  if (!tx) return []
+  if (tx.pairId) {
+    const same = txs.filter((t) => t.pairId === tx.pairId).map((t) => t.id)
+    return same.length ? same : [id]
+  }
+  // Heuristic: cùng thời điểm + kind + asset/counter đảo
+  const mate = txs.find(
+    (t) =>
+      t.id !== tx.id &&
+      !t.pairId &&
+      t.tradedAt === tx.tradedAt &&
+      t.kind === tx.kind &&
+      t.assetId === tx.counterAssetId &&
+      t.counterAssetId === tx.assetId &&
+      Math.abs(t.qty - (tx.counterQty || 0)) < 1e-9,
+  )
+  return mate ? [tx.id, mate.id] : [tx.id]
 }
 
 export const useStore = create<Store>()(
@@ -1428,10 +1464,42 @@ export const useStore = create<Store>()(
       hardDeleteLoan: (id) =>
         set((s) => ({ loans: s.loans.filter((x) => x.id !== id) })),
 
-      deleteTransaction: (id) =>
+      findPairIds: (id) => resolvePairIds(get().transactions, id),
+
+      deleteTransaction: (id) => {
+        const cur = get()
+        const ids = resolvePairIds(cur.transactions, id)
+        if (ids.length === 0) return { ok: false, error: 'Không tìm thấy giao dịch' }
+        if (hasAnyData(cur)) {
+          pushSafetyBackup('manual', cur.exportJson(), snapshotCounts(cur))
+        }
+        const remove = new Set(ids)
         set((s) => ({
-          transactions: s.transactions.filter((t) => t.id !== id),
-        })),
+          transactions: s.transactions.filter((t) => !remove.has(t.id)),
+        }))
+        return { ok: true, removed: ids.length }
+      },
+
+      updateTransactionNote: (id, note) => {
+        const cur = get()
+        const ids = resolvePairIds(cur.transactions, id)
+        if (ids.length === 0) return { ok: false, error: 'Không tìm thấy giao dịch' }
+        const setIds = new Set(ids)
+        const t = nowIso()
+        const trimmed = note.trim()
+        set((s) => ({
+          transactions: s.transactions.map((tx) =>
+            setIds.has(tx.id)
+              ? {
+                  ...tx,
+                  note: trimmed || undefined,
+                  updatedAt: t,
+                }
+              : tx,
+          ),
+        }))
+        return { ok: true }
+      },
 
       exportJson: () => {
         const s = get()

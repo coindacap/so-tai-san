@@ -29,6 +29,11 @@ export interface Transaction {
   counterQty: number
   /** VND cost locked into this leg (for crypto bought with USDT) */
   counterCostVnd?: number
+  /**
+   * Cùng pairId = 2 leg của 1 giao dịch (mua vàng/coin, đổi USDT…).
+   * Xóa/sửa note theo cặp để không orphan hold.
+   */
+  pairId?: string
   tradedAt: string
   venue?: string
   note?: string
