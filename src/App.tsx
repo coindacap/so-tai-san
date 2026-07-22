@@ -32,6 +32,7 @@ import {
 import { formatMoneyInput } from './lib/format'
 import { cloudReady, getCloudUser } from './lib/cloudSync'
 import { useAutoPrices } from './hooks/useAutoPrices'
+import { bindBrowserBack } from './lib/appHistory'
 
 function pctClass(n: number | null | undefined) {
   if (n == null || n === 0) return 'flat'
@@ -116,42 +117,62 @@ export default function App() {
     'loans',
   ].includes(store.screen)
 
-  // Vuốt mép trái → phải = quay lại (giống iOS / app chuyên nghiệp)
+  // Chặn Safari “Back” ra trang web cũ; map popstate → goBack trong app
   useEffect(() => {
-    const EDGE = 48 // vùng bắt đầu (px từ mép trái) — rộng hơn cho iPhone
-    const MIN_DX = 56 // quãng vuốt tối thiểu
-    const MAX_DY = 72 // lệch dọc cho phép (tránh nhầm cuộn)
+    return bindBrowserBack(() =>
+      useStore.getState().goBack({ fromBrowser: true }),
+    )
+  }, [])
+
+  // Vuốt từ trái → phải = quay lại (nhạy hơn, không cần kéo mạnh)
+  useEffect(() => {
+    const MIN_DX = 28 // vuốt nhẹ cũng được
+    const MAX_DY_RATIO = 1.2 // |dy| < dx * ratio
 
     let startX = 0
     let startY = 0
+    let startT = 0
     let tracking = false
-    let decided = false // đã xác định ngang vs dọc
+    let decided = false
     let isHoriz = false
+    let edgePx = 64
 
     const el = document.querySelector('.app') as HTMLElement | null
     if (!el) return
 
-    const resetVisual = () => {
-      el.style.transition = 'transform 0.2s ease-out'
+    const edgeZone = () =>
+      Math.max(56, Math.min(96, Math.round(window.innerWidth * 0.22)))
+
+    const resetVisual = (animate = true) => {
+      if (animate) {
+        el.style.transition = 'transform 0.22s cubic-bezier(0.22,1,0.36,1)'
+      } else {
+        el.style.transition = 'none'
+      }
       el.style.transform = ''
       el.style.boxShadow = ''
-      window.setTimeout(() => {
+      if (animate) {
+        window.setTimeout(() => {
+          el.style.transition = ''
+        }, 240)
+      } else {
         el.style.transition = ''
-      }, 220)
+      }
     }
 
     const onStart = (e: Event) => {
       const te = e as TouchEvent
       if (te.touches.length !== 1) return
       const t = te.touches[0]
+      edgePx = edgeZone()
       startX = t.clientX
       startY = t.clientY
-      tracking = startX <= EDGE
+      startT = Date.now()
+      // Bắt từ mép trái rộng (dễ chạm iPhone + PWA)
+      tracking = startX <= edgePx
       decided = false
       isHoriz = false
-      if (tracking) {
-        el.style.transition = 'none'
-      }
+      if (tracking) el.style.transition = 'none'
     }
 
     const onMove = (e: Event) => {
@@ -160,21 +181,41 @@ export default function App() {
       const t = te.touches[0]
       const dx = t.clientX - startX
       const dy = t.clientY - startY
+
       if (!decided) {
-        if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return
+        if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return
         decided = true
-        isHoriz = Math.abs(dx) > Math.abs(dy) * 1.15 && dx > 0
+        // Ưu tiên ngang khi kéo sang phải rõ
+        isHoriz = dx > 4 && Math.abs(dx) >= Math.abs(dy) * 0.85
         if (!isHoriz) {
           tracking = false
-          resetVisual()
+          resetVisual(false)
           return
         }
       }
-      if (!isHoriz || dx <= 0) return
-      // Kéo nhẹ màn hình theo tay (feedback)
-      const pull = Math.min(dx * 0.55, 120)
-      el.style.transform = `translateX(${pull}px)`
-      el.style.boxShadow = pull > 8 ? '-8px 0 24px rgba(0,0,0,0.08)' : ''
+
+      if (!isHoriz) return
+
+      // Chặn scroll dọc khi đang vuốt back
+      if (dx > 0) {
+        te.preventDefault()
+        const pull = Math.min(dx * 0.72, Math.min(160, window.innerWidth * 0.4))
+        el.style.transform = `translate3d(${pull}px,0,0)`
+        el.style.boxShadow =
+          pull > 6 ? '-6px 0 20px rgba(0,0,0,0.1)' : ''
+      }
+    }
+
+    const finishBack = () => {
+      el.style.transition = 'transform 0.16s ease-out'
+      el.style.transform = `translate3d(${Math.min(window.innerWidth, 420)}px,0,0)`
+      window.setTimeout(() => {
+        const went = useStore.getState().goBack()
+        el.style.transition = 'none'
+        el.style.transform = ''
+        el.style.boxShadow = ''
+        if (!went) resetVisual(true)
+      }, 140)
     }
 
     const onEnd = (e: Event) => {
@@ -184,23 +225,18 @@ export default function App() {
       const t = te.changedTouches[0]
       const dx = t.clientX - startX
       const dy = Math.abs(t.clientY - startY)
-      const ok =
-        isHoriz && startX <= EDGE && dx >= MIN_DX && dy <= MAX_DY
+      const dt = Math.max(1, Date.now() - startT)
+      const velocity = dx / dt // px/ms
+
+      // Vuốt nhẹ OK nếu: đủ xa HOẶC đủ nhanh (flick)
+      const farEnough = dx >= MIN_DX && dy < dx * MAX_DY_RATIO + 40
+      const flick = velocity > 0.35 && dx > 16 && dy < 80
+      const ok = isHoriz && startX <= edgePx && (farEnough || flick)
+
       if (ok) {
-        el.style.transition = 'transform 0.18s ease-out'
-        el.style.transform = 'translateX(100%)'
-        window.setTimeout(() => {
-          const went = useStore.getState().goBack()
-          el.style.transition = 'none'
-          el.style.transform = ''
-          el.style.boxShadow = ''
-          if (!went) {
-            // không có màn trước → kéo về
-            resetVisual()
-          }
-        }, 160)
+        finishBack()
       } else {
-        resetVisual()
+        resetVisual(true)
       }
       isHoriz = false
       decided = false
@@ -210,11 +246,12 @@ export default function App() {
       tracking = false
       isHoriz = false
       decided = false
-      resetVisual()
+      resetVisual(true)
     }
 
     el.addEventListener('touchstart', onStart, { passive: true })
-    el.addEventListener('touchmove', onMove, { passive: true })
+    // passive:false để preventDefault khi vuốt ngang
+    el.addEventListener('touchmove', onMove, { passive: false })
     el.addEventListener('touchend', onEnd, { passive: true })
     el.addEventListener('touchcancel', onCancel, { passive: true })
     return () => {

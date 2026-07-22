@@ -26,6 +26,7 @@ import {
   getSafetyBackup,
   type SafetyReason,
 } from '../lib/localBackup'
+import { pushAppHistory, syncBrowserBack } from '../lib/appHistory'
 
 const STORAGE_KEY = 'so-tai-san-v1'
 
@@ -132,7 +133,7 @@ interface Actions {
     detailAssetId?: string | null,
     opts?: { replace?: boolean },
   ) => void
-  goBack: () => boolean
+  goBack: (opts?: { fromBrowser?: boolean }) => boolean
   showToast: (msg: string) => void
   clearToast: () => void
 
@@ -457,21 +458,26 @@ export const useStore = create<Store>()(
         }
         const stack = [...cur.navStack, frame].slice(-30)
         set({ screen, detailAssetId: nextId, navStack: stack })
+        // Thêm entry history — Safari vuốt mép trái sẽ popstate trong app, không rời site
+        pushAppHistory()
       },
 
-      goBack: () => {
+      goBack: (opts?: { fromBrowser?: boolean }) => {
         const cur = get()
+        let went = false
+
         if (cur.navStack.length === 0) {
           // fallback: detail → list tab
           if (cur.screen === 'loan-detail' || cur.screen === 'loan-edit') {
             set({ screen: 'loans', detailAssetId: null })
-            return true
-          }
-          if (cur.screen === 'savings-detail' || cur.screen === 'savings-form') {
+            went = true
+          } else if (
+            cur.screen === 'savings-detail' ||
+            cur.screen === 'savings-form'
+          ) {
             set({ screen: 'savings', detailAssetId: null })
-            return true
-          }
-          if (
+            went = true
+          } else if (
             cur.screen === 'gold' ||
             cur.screen === 'asset-detail' ||
             cur.screen === 'buy-gold' ||
@@ -484,22 +490,30 @@ export const useStore = create<Store>()(
             cur.screen === 'cash'
           ) {
             set({ screen: 'home', detailAssetId: null })
-            return true
-          }
-          if (cur.screen === 'loans-trash') {
+            went = true
+          } else if (cur.screen === 'loans-trash') {
             set({ screen: 'loans', detailAssetId: null })
-            return true
+            went = true
+          } else {
+            went = false
           }
-          return false
+        } else {
+          const stack = [...cur.navStack]
+          const prev = stack.pop()!
+          set({
+            screen: prev.screen,
+            detailAssetId: prev.detailAssetId,
+            navStack: stack,
+          })
+          went = true
         }
-        const stack = [...cur.navStack]
-        const prev = stack.pop()!
-        set({
-          screen: prev.screen,
-          detailAssetId: prev.detailAssetId,
-          navStack: stack,
-        })
-        return true
+
+        // Nút Back / vuốt trong app: đồng bộ history browser
+        // (popstate từ Safari thì không gọi history.back lần nữa)
+        if (went && !opts?.fromBrowser) {
+          syncBrowserBack()
+        }
+        return went
       },
 
       showToast: (msg) => {

@@ -46,6 +46,13 @@ body,
 body {
   background: #d1d1d6;
   overscroll-behavior: none;
+  overscroll-behavior-x: none;
+  /* Giảm Safari “kéo back” toàn trang khi vuốt ngang */
+  touch-action: pan-y;
+}
+
+html {
+  overscroll-behavior-x: none;
 }
 
 button,
@@ -86,6 +93,21 @@ select {
   flex-direction: column;
   overflow: hidden;
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.04);
+  /* Cho phép app bắt vuốt ngang back; scroll dọc vẫn ở .scroll */
+  touch-action: pan-y;
+  will-change: transform;
+}
+
+/* Vùng chạm mép trái — dễ bắt vuốt back trên iPhone */
+.app::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 20px;
+  z-index: 40;
+  pointer-events: none;
 }
 
 @media (min-width: 480px) {
