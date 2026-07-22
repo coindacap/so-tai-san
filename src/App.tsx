@@ -24,7 +24,11 @@ import {
 } from './lib/format'
 import type { Loan, LoanInterestType, SavingsAccount, Screen } from './types'
 import { MoneyInput, moneyNum } from './components/MoneyInput'
-import { CloudSyncPanel, useCloudAutoSync } from './components/CloudSync'
+import {
+  CloudSyncPanel,
+  PasswordRecoveryGate,
+  useCloudAutoSync,
+} from './components/CloudSync'
 import { formatMoneyInput } from './lib/format'
 import { cloudReady, getCloudUser } from './lib/cloudSync'
 
@@ -152,6 +156,7 @@ export default function App() {
 
   return (
     <div className="app">
+      <PasswordRecoveryGate />
       {store.screen === 'onboarding' && <Onboarding />}
       {store.screen === 'home' && (
         <Home

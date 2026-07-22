@@ -83,6 +83,68 @@ export async function signOut(): Promise<void> {
   await sb.auth.signOut()
 }
 
+/** URL app hiện tại — dùng cho email reset MK (cần whitelist trên Supabase) */
+export function appOriginUrl(): string {
+  if (typeof window === 'undefined') return 'https://so-tai-san.vercel.app'
+  // bỏ hash/query; giữ path base nếu deploy subpath
+  const { origin, pathname } = window.location
+  // Vite base /so-tai-san/ trên GH Pages
+  if (pathname.startsWith('/so-tai-san')) {
+    return `${origin}/so-tai-san/`
+  }
+  return `${origin}/`
+}
+
+/** Gửi email đặt lại mật khẩu */
+export async function requestPasswordReset(
+  email: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const sb = getSupabase()
+  if (!sb) return { ok: false, error: 'Chưa cấu hình cloud' }
+  const e = email.trim()
+  if (!e || !e.includes('@')) return { ok: false, error: 'Nhập email đã đăng ký' }
+  const { error } = await sb.auth.resetPasswordForEmail(e, {
+    redirectTo: appOriginUrl(),
+  })
+  if (error) return { ok: false, error: mapAuthError(error.message) }
+  return { ok: true }
+}
+
+/** Đặt mật khẩu mới (sau khi mở link trong email, hoặc khi đã login) */
+export async function updatePassword(
+  newPassword: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const sb = getSupabase()
+  if (!sb) return { ok: false, error: 'Chưa cấu hình cloud' }
+  if (newPassword.length < 6)
+    return { ok: false, error: 'Mật khẩu tối thiểu 6 ký tự' }
+  const { error } = await sb.auth.updateUser({ password: newPassword })
+  if (error) return { ok: false, error: mapAuthError(error.message) }
+  return { ok: true }
+}
+
+/** Lắng nghe sự kiện PASSWORD_RECOVERY từ Supabase (mở link email) */
+export function onPasswordRecovery(cb: () => void): () => void {
+  const sb = getSupabase()
+  if (!sb) return () => {}
+
+  // Hash từ email: #access_token=...&type=recovery
+  const hash = typeof window !== 'undefined' ? window.location.hash : ''
+  if (hash.includes('type=recovery')) {
+    // getSession sẽ parse hash
+    void sb.auth.getSession().then(({ data }) => {
+      if (data.session) cb()
+    })
+  }
+
+  const {
+    data: { subscription },
+  } = sb.auth.onAuthStateChange((event) => {
+    if (event === 'PASSWORD_RECOVERY') cb()
+  })
+  return () => subscription.unsubscribe()
+}
+
 export async function pullSnapshot(): Promise<
   | { ok: true; remote: RemoteRow | null }
   | { ok: false; error: string }
@@ -139,9 +201,14 @@ function mapAuthError(msg: string): string {
   if (m.includes('email not confirmed'))
     return 'Email chưa xác nhận — tắt Confirm email trong Supabase (Auth → Email)'
   if (m.includes('user already registered')) return 'Email đã đăng ký — hãy đăng nhập'
+  if (m.includes('same password')) return 'Mật khẩu mới phải khác mật khẩu cũ'
+  if (m.includes('password should be') || m.includes('at least'))
+    return 'Mật khẩu tối thiểu 6 ký tự'
   if (m.includes('password')) return 'Mật khẩu không hợp lệ (tối thiểu 6 ký tự)'
-  if (m.includes('rate limit') || m.includes('too many'))
-    return 'Thử quá nhiều lần — đợi vài phút'
+  if (m.includes('rate limit') || m.includes('too many') || m.includes('security purposes'))
+    return 'Thử quá nhiều lần — đợi khoảng 1 phút rồi gửi lại'
+  if (m.includes('redirect') || m.includes('url not allowed'))
+    return 'Link reset chưa được phép — thêm domain app vào Supabase Auth → URL Configuration'
   return msg
 }
 

@@ -4,12 +4,15 @@ import {
   cloudReady,
   getCloudUser,
   markCloudDirty,
+  onPasswordRecovery,
   pullSnapshot,
   pushSnapshot,
   readCloudMeta,
+  requestPasswordReset,
   signIn,
   signOut,
   signUp,
+  updatePassword,
   writeCloudMeta,
   notifyCloudAuthChanged,
   type CloudUser,
@@ -99,6 +102,117 @@ export function useCloudAutoSync(enabled: boolean) {
   }, [enabled, doPush])
 }
 
+/** Màn đặt MK mới khi mở link từ email quên mật khẩu */
+export function PasswordRecoveryGate() {
+  const showToast = useStore((s) => s.showToast)
+  const [open, setOpen] = useState(false)
+  const [pw, setPw] = useState('')
+  const [pw2, setPw2] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+
+  useEffect(() => {
+    return onPasswordRecovery(() => setOpen(true))
+  }, [])
+
+  if (!open) return null
+
+  return (
+    <div
+      className="sheet-bg"
+      style={{ zIndex: 80 }}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div
+        className="sheet"
+        style={{ maxHeight: '90vh' }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="grab" />
+        <h3>Đặt mật khẩu mới</h3>
+        <p
+          style={{
+            fontSize: 13,
+            color: 'var(--muted)',
+            margin: '0 0 12px',
+            lineHeight: 1.4,
+          }}
+        >
+          Bạn vừa mở link đặt lại mật khẩu từ email. Nhập mật khẩu cloud mới
+          (tối thiểu 6 ký tự).
+        </p>
+        <div className="field">
+          <label>Mật khẩu mới</label>
+          <input
+            type="password"
+            value={pw}
+            onChange={(e) => setPw(e.target.value)}
+            autoComplete="new-password"
+            style={{ fontSize: 17, fontWeight: 600 }}
+          />
+        </div>
+        <div className="field">
+          <label>Nhập lại</label>
+          <input
+            type="password"
+            value={pw2}
+            onChange={(e) => setPw2(e.target.value)}
+            autoComplete="new-password"
+            style={{ fontSize: 17, fontWeight: 600 }}
+          />
+        </div>
+        {err && <div className="error">{err}</div>}
+        <button
+          className="btn-primary"
+          type="button"
+          disabled={busy}
+          onClick={() => {
+            void (async () => {
+              if (pw !== pw2) {
+                setErr('Hai mật khẩu không khớp')
+                return
+              }
+              setBusy(true)
+              setErr('')
+              try {
+                const res = await updatePassword(pw)
+                if (!res.ok) {
+                  setErr(res.error)
+                  return
+                }
+                // Xóa hash recovery trên URL
+                if (window.location.hash) {
+                  history.replaceState(
+                    null,
+                    '',
+                    window.location.pathname + window.location.search,
+                  )
+                }
+                showToast('Đã đổi mật khẩu — đăng nhập bằng MK mới')
+                notifyCloudAuthChanged()
+                setOpen(false)
+                setPw('')
+                setPw2('')
+              } finally {
+                setBusy(false)
+              }
+            })()
+          }}
+        >
+          {busy ? 'Đang lưu…' : 'Lưu mật khẩu mới'}
+        </button>
+        <button
+          className="sheet-cancel"
+          type="button"
+          onClick={() => setOpen(false)}
+        >
+          Đóng
+        </button>
+      </div>
+    </div>
+  )
+}
+
 export function CloudSyncPanel() {
   const showToast = useStore((s) => s.showToast)
   const applyCloudSnapshot = useStore((s) => s.applyCloudSnapshot)
@@ -108,9 +222,12 @@ export function CloudSyncPanel() {
   const [user, setUser] = useState<CloudUser | null>(null)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
-  const [mode, setMode] = useState<'login' | 'register'>('login')
+  const [mode, setMode] = useState<'login' | 'register' | 'forgot'>('login')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [newPw, setNewPw] = useState('')
+  const [newPw2, setNewPw2] = useState('')
+  const [changePwOpen, setChangePwOpen] = useState(false)
   const [status, setStatus] = useState('')
   const [metaTick, setMetaTick] = useState(0)
 
@@ -217,6 +334,27 @@ export function CloudSyncPanel() {
 
   async function onAuth() {
     const e = email.trim()
+    if (mode === 'forgot') {
+      if (!e) {
+        setStatus('Nhập email đã đăng ký cloud')
+        return
+      }
+      setBusy(true)
+      setStatus('')
+      try {
+        const res = await requestPasswordReset(e)
+        if (!res.ok) {
+          setStatus(res.error)
+          return
+        }
+        setStatus(
+          'Đã gửi email đặt lại MK. Kiểm tra hộp thư (và Spam) → bấm link → nhập MK mới. Link dùng được vài phút.',
+        )
+      } finally {
+        setBusy(false)
+      }
+      return
+    }
     if (!e || !password) {
       setStatus('Nhập email và mật khẩu')
       return
@@ -246,6 +384,27 @@ export function CloudSyncPanel() {
         }
         await afterAuth(res.user)
       }
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function onChangePassword() {
+    if (newPw !== newPw2) {
+      showToast('Hai mật khẩu không khớp')
+      return
+    }
+    setBusy(true)
+    try {
+      const res = await updatePassword(newPw)
+      if (!res.ok) {
+        showToast(res.error)
+        return
+      }
+      showToast('Đã đổi mật khẩu cloud')
+      setNewPw('')
+      setNewPw2('')
+      setChangePwOpen(false)
     } finally {
       setBusy(false)
     }
@@ -348,20 +507,39 @@ export function CloudSyncPanel() {
   if (!user) {
     return (
       <div className="card">
-        <div className="seg" style={{ margin: '12px 12px 0' }}>
+        <div
+          className="seg"
+          style={{ margin: '12px 12px 0', gridTemplateColumns: '1fr 1fr 1fr' }}
+        >
           <button
             type="button"
             className={mode === 'login' ? 'on' : ''}
-            onClick={() => setMode('login')}
+            onClick={() => {
+              setMode('login')
+              setStatus('')
+            }}
           >
             Đăng nhập
           </button>
           <button
             type="button"
             className={mode === 'register' ? 'on' : ''}
-            onClick={() => setMode('register')}
+            onClick={() => {
+              setMode('register')
+              setStatus('')
+            }}
           >
-            Tạo tài khoản
+            Tạo TK
+          </button>
+          <button
+            type="button"
+            className={mode === 'forgot' ? 'on' : ''}
+            onClick={() => {
+              setMode('forgot')
+              setStatus('')
+            }}
+          >
+            Quên MK
           </button>
         </div>
         <div className="field" style={{ padding: '0 14px' }}>
@@ -375,22 +553,50 @@ export function CloudSyncPanel() {
             style={{ fontSize: 17, fontWeight: 600 }}
           />
         </div>
-        <div className="field" style={{ padding: '0 14px' }}>
-          <label>Mật khẩu</label>
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="Tối thiểu 6 ký tự"
-            autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
-            style={{ fontSize: 17, fontWeight: 600 }}
-          />
-          <div className="hint">
-            Dùng 1 email cho mọi máy (iPhone + Mac) → cùng một sổ.
+        {mode !== 'forgot' && (
+          <div className="field" style={{ padding: '0 14px' }}>
+            <label>Mật khẩu</label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Tối thiểu 6 ký tự"
+              autoComplete={
+                mode === 'login' ? 'current-password' : 'new-password'
+              }
+              style={{ fontSize: 17, fontWeight: 600 }}
+            />
+            <div className="hint">
+              Dùng 1 email cho mọi máy (iPhone + Mac) → cùng một sổ.
+            </div>
           </div>
-        </div>
+        )}
+        {mode === 'forgot' && (
+          <div className="field" style={{ padding: '0 14px' }}>
+            <div className="hint">
+              Nhập email cloud → nhận link đặt MK mới. Kiểm tra cả mục Spam.
+              Sổ trên máy/local không bị xóa.
+            </div>
+          </div>
+        )}
         {status && (
-          <div className="error" style={{ margin: '0 14px 8px' }}>
+          <div
+            className={status.startsWith('Đã gửi') ? 'hint' : 'error'}
+            style={{
+              margin: '0 14px 8px',
+              padding: status.startsWith('Đã gửi') ? '10px 12px' : undefined,
+              background: status.startsWith('Đã gửi')
+                ? 'rgba(52, 199, 89, 0.12)'
+                : undefined,
+              borderRadius: 10,
+              color: status.startsWith('Đã gửi')
+                ? 'var(--green-ink)'
+                : undefined,
+              fontWeight: 600,
+              fontSize: 13,
+              lineHeight: 1.4,
+            }}
+          >
             {status}
           </div>
         )}
@@ -405,7 +611,9 @@ export function CloudSyncPanel() {
               ? 'Đang xử lý…'
               : mode === 'login'
                 ? 'Đăng nhập cloud'
-                : 'Tạo tài khoản cloud'}
+                : mode === 'register'
+                  ? 'Tạo tài khoản cloud'
+                  : 'Gửi email đặt lại MK'}
           </button>
         </div>
       </div>
@@ -464,13 +672,62 @@ export function CloudSyncPanel() {
           type="button"
           style={{ margin: 0 }}
           disabled={busy}
+          onClick={() => setChangePwOpen((v) => !v)}
+        >
+          {changePwOpen ? 'Huỷ đổi MK' : 'Đổi mật khẩu cloud'}
+        </button>
+        {changePwOpen && (
+          <div
+            style={{
+              display: 'grid',
+              gap: 8,
+              padding: 12,
+              background: 'var(--bg, #f2f2f7)',
+              borderRadius: 12,
+            }}
+          >
+            <div className="field" style={{ margin: 0 }}>
+              <label>Mật khẩu mới</label>
+              <input
+                type="password"
+                value={newPw}
+                onChange={(e) => setNewPw(e.target.value)}
+                autoComplete="new-password"
+                style={{ fontSize: 16, fontWeight: 600 }}
+              />
+            </div>
+            <div className="field" style={{ margin: 0 }}>
+              <label>Nhập lại MK mới</label>
+              <input
+                type="password"
+                value={newPw2}
+                onChange={(e) => setNewPw2(e.target.value)}
+                autoComplete="new-password"
+                style={{ fontSize: 16, fontWeight: 600 }}
+              />
+            </div>
+            <button
+              className="btn-primary"
+              type="button"
+              disabled={busy || !newPw}
+              onClick={() => void onChangePassword()}
+            >
+              Lưu mật khẩu mới
+            </button>
+          </div>
+        )}
+        <button
+          className="btn-secondary"
+          type="button"
+          style={{ margin: 0 }}
+          disabled={busy}
           onClick={() => void onLogout()}
         >
           Đăng xuất cloud
         </button>
         <div style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.4 }}>
           Sửa sổ trên máy → tự đẩy cloud sau ~2,5 giây. Đăng xuất không xóa
-          sổ local.
+          sổ local. Quên MK khi đã logout: tab <b>Quên MK</b> → email.
         </div>
       </div>
     </div>
