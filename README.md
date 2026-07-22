@@ -29,7 +29,13 @@ npm run build
 npm run preview -- --host
 ```
 
-Hoặc deploy thư mục `dist/` lên Vercel / Netlify / Cloudflare Pages → mở link HTTPS trên iPhone → Thêm MH chính.
+### Online (HTTPS — iPhone “Thêm MH chính”)
+
+- **GitHub Pages:** https://coindacap.github.io/so-tai-san/
+- Repo: https://github.com/coindacap/so-tai-san
+- Mỗi push `main` → Actions build & deploy tự động
+
+Hoặc deploy `dist/` lên Vercel / Netlify / Cloudflare Pages.
 
 ## Luồng nghiệp vụ
 
