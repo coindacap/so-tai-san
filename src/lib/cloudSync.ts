@@ -260,3 +260,188 @@ export function markCloudDirty() {
 export function notifyCloudAuthChanged() {
   window.dispatchEvent(new Event('so-cloud-auth'))
 }
+
+function ts(iso: string | null | undefined): number {
+  if (!iso) return 0
+  const n = Date.parse(iso)
+  return Number.isFinite(n) ? n : 0
+}
+
+/**
+ * “Độ giàu” sổ — tránh máy trống / mới onboard đè máy có TK+vay+coin.
+ * Seed assets (~3) gần như 0 điểm.
+ */
+export function snapshotRichness(s: {
+  transactions?: unknown[]
+  savings?: unknown[]
+  loans?: unknown[]
+  assets?: unknown[]
+}): number {
+  const tx = s.transactions?.length ?? 0
+  const sav = s.savings?.length ?? 0
+  const loan = s.loans?.length ?? 0
+  const assets = s.assets?.length ?? 0
+  return tx * 10 + sav * 8 + loan * 8 + Math.max(0, assets - 3) * 2
+}
+
+export type ReconcileMode = 'login' | 'auto' | 'manual-push' | 'manual-pull'
+
+export type ReconcileResult = {
+  action: 'pulled' | 'pushed' | 'noop' | 'error'
+  message: string
+}
+
+/**
+ * Đồng bộ 2 chiều Mac ↔ iPhone cùng 1 email.
+ * Ưu tiên sổ “giàu” hơn; không auto-đẩy sổ trống đè cloud đầy.
+ */
+export async function reconcileCloud(opts: {
+  getLocal: () => CloudSnapshot
+  applyRemote: (data: CloudSnapshot) => void
+  mode: ReconcileMode
+}): Promise<ReconcileResult> {
+  const pull = await pullSnapshot()
+  if (!pull.ok) return { action: 'error', message: pull.error }
+
+  const local = opts.getLocal()
+  const localR = snapshotRichness(local)
+  const meta = readCloudMeta()
+  const remote = pull.remote
+
+  // --- Cloud trống ---
+  if (!remote) {
+    if (localR > 0 || opts.mode === 'manual-push') {
+      const res = await pushSnapshot(local)
+      if (!res.ok) return { action: 'error', message: res.error }
+      writeCloudMeta({
+        dirty: false,
+        lastSyncedAt: res.updatedAt,
+        lastRemoteUpdatedAt: res.updatedAt,
+      })
+      return {
+        action: 'pushed',
+        message: 'Đã đẩy sổ lên cloud (lần đầu)',
+      }
+    }
+    return {
+      action: 'noop',
+      message: 'Cloud trống — ghi sổ trên máy rồi sẽ tự đồng bộ',
+    }
+  }
+
+  const remoteR = snapshotRichness(remote.data)
+  const remoteT = ts(remote.updated_at)
+  const lastRemoteKnown = ts(meta.lastRemoteUpdatedAt)
+  const lastSync = ts(meta.lastSyncedAt)
+
+  // --- Kéo bắt buộc (manual-pull) ---
+  if (opts.mode === 'manual-pull') {
+    opts.applyRemote(remote.data)
+    writeCloudMeta({
+      dirty: false,
+      lastSyncedAt: remote.updated_at,
+      lastRemoteUpdatedAt: remote.updated_at,
+    })
+    return {
+      action: 'pulled',
+      message: `Đã tải từ cloud · ${remoteR} điểm dữ liệu`,
+    }
+  }
+
+  // --- Remote giàu hơn local → luôn lấy remote (trừ khi user bấm đẩy tay) ---
+  if (opts.mode !== 'manual-push' && remoteR > localR) {
+    opts.applyRemote(remote.data)
+    writeCloudMeta({
+      dirty: false,
+      lastSyncedAt: remote.updated_at,
+      lastRemoteUpdatedAt: remote.updated_at,
+    })
+    return {
+      action: 'pulled',
+      message:
+        localR === 0
+          ? 'Đã tải sổ đầy từ cloud về máy này'
+          : 'Máy khác có sổ đầy hơn — đã cập nhật từ cloud',
+    }
+  }
+
+  // --- Local giàu hơn remote → đẩy lên ---
+  if (localR > remoteR) {
+    const res = await pushSnapshot(local)
+    if (!res.ok) return { action: 'error', message: res.error }
+    writeCloudMeta({
+      dirty: false,
+      lastSyncedAt: res.updatedAt,
+      lastRemoteUpdatedAt: res.updatedAt,
+    })
+    return {
+      action: 'pushed',
+      message: 'Đã đẩy sổ (máy này đầy hơn cloud) lên cloud',
+    }
+  }
+
+  // --- Độ giàu tương đương: theo thời gian ---
+  // Cloud mới hơn những gì máy này biết → kéo
+  if (
+    opts.mode !== 'manual-push' &&
+    remoteT > lastRemoteKnown &&
+    remoteT > lastSync
+  ) {
+    // Tránh kéo đè nếu local dirty và cùng richness nhưng user vừa sửa
+    if (meta.dirty && opts.mode === 'auto' && localR >= remoteR) {
+      const res = await pushSnapshot(local)
+      if (!res.ok) return { action: 'error', message: res.error }
+      writeCloudMeta({
+        dirty: false,
+        lastSyncedAt: res.updatedAt,
+        lastRemoteUpdatedAt: res.updatedAt,
+      })
+      return { action: 'pushed', message: 'Đã đẩy thay đổi trên máy này lên cloud' }
+    }
+    opts.applyRemote(remote.data)
+    writeCloudMeta({
+      dirty: false,
+      lastSyncedAt: remote.updated_at,
+      lastRemoteUpdatedAt: remote.updated_at,
+    })
+    return {
+      action: 'pulled',
+      message: 'Đã cập nhật từ cloud (máy khác vừa sửa)',
+    }
+  }
+
+  // Local dirty → đẩy (đã biết local không nghèo hơn remote)
+  if (meta.dirty || opts.mode === 'manual-push' || opts.mode === 'login') {
+    // Chặn auto-push sổ rỗng
+    if (opts.mode === 'auto' && localR === 0 && remoteR > 0) {
+      opts.applyRemote(remote.data)
+      writeCloudMeta({
+        dirty: false,
+        lastSyncedAt: remote.updated_at,
+        lastRemoteUpdatedAt: remote.updated_at,
+      })
+      return {
+        action: 'pulled',
+        message: 'Chặn đẩy sổ trống — đã tải lại từ cloud',
+      }
+    }
+    const res = await pushSnapshot(local)
+    if (!res.ok) return { action: 'error', message: res.error }
+    writeCloudMeta({
+      dirty: false,
+      lastSyncedAt: res.updatedAt,
+      lastRemoteUpdatedAt: res.updatedAt,
+    })
+    return {
+      action: 'pushed',
+      message:
+        opts.mode === 'login'
+          ? 'Đã đồng bộ sổ lên cloud'
+          : 'Đã đẩy thay đổi lên cloud',
+    }
+  }
+
+  // Đánh dấu đã biết remote hiện tại
+  writeCloudMeta({ lastRemoteUpdatedAt: remote.updated_at })
+  return { action: 'noop', message: 'Hai máy đã khớp cloud' }
+}

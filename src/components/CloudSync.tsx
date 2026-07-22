@@ -5,70 +5,55 @@ import {
   getCloudUser,
   markCloudDirty,
   onPasswordRecovery,
-  pullSnapshot,
-  pushSnapshot,
   readCloudMeta,
+  reconcileCloud,
   requestPasswordReset,
   signIn,
   signOut,
   signUp,
   updatePassword,
-  writeCloudMeta,
   notifyCloudAuthChanged,
   type CloudUser,
 } from '../lib/cloudSync'
 
-function hasLocalData(): boolean {
-  const s = useStore.getState()
-  return (
-    s.settings.hasOnboarded ||
-    s.transactions.length > 0 ||
-    s.savings.length > 0 ||
-    s.loans.length > 0
-  )
-}
-
-function ts(iso: string | null | undefined): number {
-  if (!iso) return 0
-  const n = Date.parse(iso)
-  return Number.isFinite(n) ? n : 0
-}
-
 /**
- * Đồng bộ local ↔ Supabase.
- * - Local-first: luôn giữ localStorage
- * - Last-write-wins theo updated_at
+ * Đồng bộ 2 chiều Mac ↔ iPhone.
+ * - Mở app / quay lại app: kéo cloud nếu máy kia mới hơn
+ * - Sửa sổ: đẩy lên (không đẩy sổ trống đè sổ đầy)
  */
 export function useCloudAutoSync(enabled: boolean) {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const pushing = useRef(false)
+  const busy = useRef(false)
 
-  const doPush = useCallback(async () => {
-    if (!enabled || !cloudReady() || pushing.current) return
-    const user = await getCloudUser()
-    if (!user) return
-    const meta = readCloudMeta()
-    if (!meta.dirty && meta.lastSyncedAt) return
-
-    pushing.current = true
-    try {
-      const snap = useStore.getState().getCloudSnapshot()
-      const res = await pushSnapshot(snap)
-      if (res.ok) {
-        writeCloudMeta({
-          dirty: false,
-          lastSyncedAt: res.updatedAt,
-          lastRemoteUpdatedAt: res.updatedAt,
+  const runReconcile = useCallback(
+    async (mode: 'auto' | 'login' = 'auto') => {
+      if (!enabled || !cloudReady() || busy.current) return
+      const user = await getCloudUser()
+      if (!user) return
+      busy.current = true
+      try {
+        await reconcileCloud({
+          mode,
+          getLocal: () => useStore.getState().getCloudSnapshot(),
+          applyRemote: (data) => useStore.getState().applyCloudSnapshot(data),
         })
+      } finally {
+        busy.current = false
       }
-    } finally {
-      pushing.current = false
-    }
-  }, [enabled])
+    },
+    [enabled],
+  )
+
+  // Lần đầu bật sync + mỗi 45s poll nhẹ (kéo nếu máy kia sửa)
+  useEffect(() => {
+    if (!enabled) return
+    void runReconcile('auto')
+    const id = setInterval(() => void runReconcile('auto'), 45_000)
+    return () => clearInterval(id)
+  }, [enabled, runReconcile])
 
   useEffect(() => {
     if (!enabled) return
-    // Đánh dirty khi store đổi (persist data)
     const unsub = useStore.subscribe((state, prev) => {
       if (
         state.assets !== prev.assets ||
@@ -81,7 +66,7 @@ export function useCloudAutoSync(enabled: boolean) {
         markCloudDirty()
         if (timer.current) clearTimeout(timer.current)
         timer.current = setTimeout(() => {
-          void doPush()
+          void runReconcile('auto')
         }, 2500)
       }
     })
@@ -89,17 +74,22 @@ export function useCloudAutoSync(enabled: boolean) {
       unsub()
       if (timer.current) clearTimeout(timer.current)
     }
-  }, [enabled, doPush])
+  }, [enabled, runReconcile])
 
-  // Push khi app quay lại foreground
+  // Quay lại app (iPhone mở lại) → kéo + đẩy
   useEffect(() => {
     if (!enabled) return
     const onVis = () => {
-      if (document.visibilityState === 'visible') void doPush()
+      if (document.visibilityState === 'visible') void runReconcile('auto')
     }
+    const onFocus = () => void runReconcile('auto')
     document.addEventListener('visibilitychange', onVis)
-    return () => document.removeEventListener('visibilitychange', onVis)
-  }, [enabled, doPush])
+    window.addEventListener('focus', onFocus)
+    return () => {
+      document.removeEventListener('visibilitychange', onVis)
+      window.removeEventListener('focus', onFocus)
+    }
+  }, [enabled, runReconcile])
 }
 
 /** Màn đặt MK mới khi mở link từ email quên mật khẩu */
@@ -257,75 +247,14 @@ export function CloudSyncPanel() {
   async function afterAuth(u: CloudUser) {
     setUser(u)
     notifyCloudAuthChanged()
-    // Đồng bộ ngay sau đăng nhập
     setBusy(true)
     try {
-      const pull = await pullSnapshot()
-      if (!pull.ok) {
-        showToast(pull.error)
-        return
-      }
-      const local = hasLocalData()
-      const remote = pull.remote
-
-      if (!remote) {
-        // Cloud trống → đẩy local
-        if (local) {
-          const res = await pushSnapshot(getCloudSnapshot())
-          if (res.ok) {
-            writeCloudMeta({
-              dirty: false,
-              lastSyncedAt: res.updatedAt,
-              lastRemoteUpdatedAt: res.updatedAt,
-            })
-            showToast('Đã tải sổ lên cloud lần đầu')
-          } else showToast(res.error)
-        } else {
-          showToast('Đăng nhập OK · cloud trống — ghi sổ rồi sẽ tự đồng bộ')
-        }
-        return
-      }
-
-      if (!local) {
-        applyCloudSnapshot(remote.data)
-        writeCloudMeta({
-          dirty: false,
-          lastSyncedAt: remote.updated_at,
-          lastRemoteUpdatedAt: remote.updated_at,
-        })
-        showToast('Đã tải sổ từ cloud')
-        return
-      }
-
-      // Cả hai có data: last-write-wins
-      const remoteT = ts(remote.updated_at)
-      const localT = ts(meta.lastSyncedAt) || ts(remote.data.savedAt)
-      // Nếu remote mới hơn lần sync gần nhất → lấy remote
-      // Nếu local dirty hoặc local mới hơn → push
-      const dirty = readCloudMeta().dirty
-      if (remoteT > localT && !dirty) {
-        applyCloudSnapshot(remote.data)
-        writeCloudMeta({
-          dirty: false,
-          lastSyncedAt: remote.updated_at,
-          lastRemoteUpdatedAt: remote.updated_at,
-        })
-        showToast('Đã cập nhật sổ từ cloud (máy khác mới hơn)')
-      } else {
-        const res = await pushSnapshot(getCloudSnapshot())
-        if (res.ok) {
-          writeCloudMeta({
-            dirty: false,
-            lastSyncedAt: res.updatedAt,
-            lastRemoteUpdatedAt: res.updatedAt,
-          })
-          showToast(
-            remoteT > localT
-              ? 'Đã ghi đè cloud bằng sổ trên máy này'
-              : 'Đã đồng bộ sổ lên cloud',
-          )
-        } else showToast(res.error)
-      }
+      const res = await reconcileCloud({
+        mode: 'login',
+        getLocal: () => getCloudSnapshot(),
+        applyRemote: (data) => applyCloudSnapshot(data),
+      })
+      showToast(res.message)
     } finally {
       setBusy(false)
       setMetaTick((n) => n + 1)
@@ -416,33 +345,22 @@ export function CloudSyncPanel() {
   }
 
   async function onPull() {
+    if (
+      !window.confirm(
+        'Tải từ cloud sẽ ghi đè sổ trên máy này bằng bản cloud. Tiếp tục?',
+      )
+    ) {
+      return
+    }
     setBusy(true)
     try {
-      const pull = await pullSnapshot()
-      if (!pull.ok) {
-        showToast(pull.error)
-        return
-      }
-      if (!pull.remote) {
-        showToast('Cloud chưa có dữ liệu — bấm Đẩy lên cloud')
-        return
-      }
-      if (
-        hasLocalData() &&
-        !window.confirm(
-          'Tải từ cloud sẽ ghi đè sổ trên máy này. Tiếp tục?',
-        )
-      ) {
-        return
-      }
-      applyCloudSnapshot(pull.remote.data)
-      writeCloudMeta({
-        dirty: false,
-        lastSyncedAt: pull.remote.updated_at,
-        lastRemoteUpdatedAt: pull.remote.updated_at,
+      const res = await reconcileCloud({
+        mode: 'manual-pull',
+        getLocal: () => getCloudSnapshot(),
+        applyRemote: (data) => applyCloudSnapshot(data),
       })
       setMetaTick((n) => n + 1)
-      showToast('Đã tải sổ từ cloud')
+      showToast(res.message)
     } finally {
       setBusy(false)
     }
@@ -451,18 +369,13 @@ export function CloudSyncPanel() {
   async function onPush() {
     setBusy(true)
     try {
-      const res = await pushSnapshot(getCloudSnapshot())
-      if (!res.ok) {
-        showToast(res.error)
-        return
-      }
-      writeCloudMeta({
-        dirty: false,
-        lastSyncedAt: res.updatedAt,
-        lastRemoteUpdatedAt: res.updatedAt,
+      const res = await reconcileCloud({
+        mode: 'manual-push',
+        getLocal: () => getCloudSnapshot(),
+        applyRemote: (data) => applyCloudSnapshot(data),
       })
       setMetaTick((n) => n + 1)
-      showToast('Đã đẩy sổ lên cloud')
+      showToast(res.message)
     } finally {
       setBusy(false)
     }
@@ -734,8 +647,9 @@ export function CloudSyncPanel() {
           Đăng xuất cloud
         </button>
         <div style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.4 }}>
-          Sửa sổ trên máy → tự đẩy cloud sau ~2,5 giây. Đăng xuất không xóa
-          sổ local. Quên MK khi đã logout: tab <b>Quên MK</b> → email.
+          <b>Mac + iPhone cùng email:</b> mở app / sửa sổ sẽ tự kéo·đẩy cloud.
+          Máy trống không còn đè sổ đầy. Nút “Tải từ cloud” nếu cần kéo tay.
+          Đăng xuất không xóa sổ local.
         </div>
       </div>
     </div>
