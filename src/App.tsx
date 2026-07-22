@@ -116,32 +116,115 @@ export default function App() {
     'loans',
   ].includes(store.screen)
 
-  // Vuốt từ mép trái → phải = quay lại (iPhone)
+  // Vuốt mép trái → phải = quay lại (giống iOS / app chuyên nghiệp)
   useEffect(() => {
+    const EDGE = 48 // vùng bắt đầu (px từ mép trái) — rộng hơn cho iPhone
+    const MIN_DX = 56 // quãng vuốt tối thiểu
+    const MAX_DY = 72 // lệch dọc cho phép (tránh nhầm cuộn)
+
     let startX = 0
     let startY = 0
+    let tracking = false
+    let decided = false // đã xác định ngang vs dọc
+    let isHoriz = false
+
+    const el = document.querySelector('.app') as HTMLElement | null
+    if (!el) return
+
+    const resetVisual = () => {
+      el.style.transition = 'transform 0.2s ease-out'
+      el.style.transform = ''
+      el.style.boxShadow = ''
+      window.setTimeout(() => {
+        el.style.transition = ''
+      }, 220)
+    }
+
     const onStart = (e: Event) => {
       const te = e as TouchEvent
+      if (te.touches.length !== 1) return
       const t = te.touches[0]
       startX = t.clientX
       startY = t.clientY
+      tracking = startX <= EDGE
+      decided = false
+      isHoriz = false
+      if (tracking) {
+        el.style.transition = 'none'
+      }
     }
+
+    const onMove = (e: Event) => {
+      if (!tracking) return
+      const te = e as TouchEvent
+      const t = te.touches[0]
+      const dx = t.clientX - startX
+      const dy = t.clientY - startY
+      if (!decided) {
+        if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return
+        decided = true
+        isHoriz = Math.abs(dx) > Math.abs(dy) * 1.15 && dx > 0
+        if (!isHoriz) {
+          tracking = false
+          resetVisual()
+          return
+        }
+      }
+      if (!isHoriz || dx <= 0) return
+      // Kéo nhẹ màn hình theo tay (feedback)
+      const pull = Math.min(dx * 0.55, 120)
+      el.style.transform = `translateX(${pull}px)`
+      el.style.boxShadow = pull > 8 ? '-8px 0 24px rgba(0,0,0,0.08)' : ''
+    }
+
     const onEnd = (e: Event) => {
+      if (!tracking) return
+      tracking = false
       const te = e as TouchEvent
       const t = te.changedTouches[0]
       const dx = t.clientX - startX
       const dy = Math.abs(t.clientY - startY)
-      if (startX <= 28 && dx > 70 && dy < 60) {
-        useStore.getState().goBack()
+      const ok =
+        isHoriz && startX <= EDGE && dx >= MIN_DX && dy <= MAX_DY
+      if (ok) {
+        el.style.transition = 'transform 0.18s ease-out'
+        el.style.transform = 'translateX(100%)'
+        window.setTimeout(() => {
+          const went = useStore.getState().goBack()
+          el.style.transition = 'none'
+          el.style.transform = ''
+          el.style.boxShadow = ''
+          if (!went) {
+            // không có màn trước → kéo về
+            resetVisual()
+          }
+        }, 160)
+      } else {
+        resetVisual()
       }
+      isHoriz = false
+      decided = false
     }
-    const el = document.querySelector('.app') as HTMLElement | null
-    if (!el) return
+
+    const onCancel = () => {
+      tracking = false
+      isHoriz = false
+      decided = false
+      resetVisual()
+    }
+
     el.addEventListener('touchstart', onStart, { passive: true })
+    el.addEventListener('touchmove', onMove, { passive: true })
     el.addEventListener('touchend', onEnd, { passive: true })
+    el.addEventListener('touchcancel', onCancel, { passive: true })
     return () => {
       el.removeEventListener('touchstart', onStart)
+      el.removeEventListener('touchmove', onMove)
       el.removeEventListener('touchend', onEnd)
+      el.removeEventListener('touchcancel', onCancel)
+      el.style.transform = ''
+      el.style.transition = ''
+      el.style.boxShadow = ''
     }
   }, [])
 
