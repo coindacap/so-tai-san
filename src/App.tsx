@@ -31,6 +31,7 @@ import {
 } from './components/CloudSync'
 import { formatMoneyInput } from './lib/format'
 import { cloudReady, getCloudUser } from './lib/cloudSync'
+import { useAutoPrices } from './hooks/useAutoPrices'
 
 function pctClass(n: number | null | undefined) {
   if (n == null || n === 0) return 'flat'
@@ -80,6 +81,8 @@ export default function App() {
     return () => window.removeEventListener('so-cloud-auth', refresh)
   }, [])
   useCloudAutoSync(cloudLoggedIn)
+  // Giá coin/USDT Binance + vàng nhẫn ước lượng — tự refresh
+  useAutoPrices(ready && store.screen !== 'onboarding')
 
   const state = {
     assets: store.assets,
@@ -477,6 +480,7 @@ function Home({
 }) {
   const setScreen = useStore((s) => s.setScreen)
   const updateSettings = useStore((s) => s.updateSettings)
+  const showToast = useStore((s) => s.showToast)
   const quotes = useStore((s) => s.quotes)
   const assets = useStore((s) => s.assets)
   const gold = assets.find((a) => a.symbol === 'NHAN9999')
@@ -485,12 +489,33 @@ function Home({
   const usdtQ = usdt ? quotes[usdt.id] : undefined
   const { buckets, totalValue, totalPnl, totalPnlPct } = summary
   const grandTotal = totalValue + savingsTotal + loansTotal
+  const { refresh: refreshPrices, status: priceStatus } = useAutoPrices(false)
 
   return (
     <div className="scroll">
       <div className="nav">
         <div style={{ minWidth: 64 }} />
         <div style={{ display: 'flex', gap: 8 }}>
+          <button
+            className="icon-btn"
+            disabled={priceStatus === 'loading'}
+            onClick={() => {
+              void refreshPrices(false).then((live) => {
+                if (!live) {
+                  showToast('Không lấy được giá')
+                  return
+                }
+                showToast(
+                  live.notes[0] ||
+                    (live.errors[0] ? live.errors[0] : 'Đã cập nhật giá live'),
+                )
+              })
+            }}
+            aria-label="Làm mới giá"
+            title="Lấy giá Binance / vàng"
+          >
+            {priceStatus === 'loading' ? '…' : '↻'}
+          </button>
           <button
             className="icon-btn"
             onClick={() => updateSettings({ privacyMode: !privacy })}
@@ -2007,6 +2032,7 @@ function Prices() {
   const gold = assets.find((a) => a.symbol === 'NHAN9999')!
   const usdt = assets.find((a) => a.symbol === 'USDT')!
   const cryptos = assets.filter((a) => a.assetClass === 'crypto')
+  const { refresh, status: autoStatus } = useAutoPrices(false)
 
   const [bid, setBid] = useState(String(quotes[gold.id]?.priceBid ?? 7820000))
   const [ask, setAsk] = useState(String(quotes[gold.id]?.priceAsk ?? 7920000))
@@ -2019,6 +2045,53 @@ function Prices() {
     })
     return m
   })
+  const [fetching, setFetching] = useState(false)
+
+  // Sync form khi quotes store đổi (sau auto fetch)
+  useEffect(() => {
+    const g = quotes[gold.id]
+    const u = quotes[usdt.id]
+    if (g?.priceBid != null) setBid(String(g.priceBid))
+    if (g?.priceAsk != null) setAsk(String(g.priceAsk))
+    if (g?.label) setLabel(g.label)
+    if (u?.price != null) setUsdtP(String(u.price))
+    setCoinPrices((m) => {
+      const next = { ...m }
+      cryptos.forEach((c) => {
+        if (quotes[c.id]?.price != null) next[c.id] = String(quotes[c.id]!.price)
+      })
+      return next
+    })
+  }, [quotes, gold.id, usdt.id, cryptos])
+
+  async function pullLive() {
+    setFetching(true)
+    try {
+      const live = await refresh(false)
+      if (!live) {
+        showToast('Không lấy được giá — kiểm tra mạng')
+        return
+      }
+      if (live.usdtVnd) setUsdtP(String(live.usdtVnd))
+      if (live.goldBid) setBid(String(live.goldBid))
+      if (live.goldAsk) setAsk(String(live.goldAsk))
+      if (live.goldLabel) setLabel(live.goldLabel)
+      setCoinPrices((m) => {
+        const next = { ...m }
+        cryptos.forEach((c) => {
+          const p = live.coins[c.symbol.toUpperCase()]
+          if (p) next[c.id] = String(p)
+        })
+        return next
+      })
+      const msg =
+        live.notes.slice(0, 2).join(' · ') ||
+        (live.errors[0] ? live.errors[0] : 'Đã lấy giá live')
+      showToast(msg)
+    } finally {
+      setFetching(false)
+    }
+  }
 
   return (
     <div className="scroll plain">
@@ -2029,6 +2102,30 @@ function Prices() {
         <div className="mid">Cập nhật giá</div>
         <div style={{ minWidth: 64 }} />
       </div>
+
+      <div className="card" style={{ marginBottom: 12 }}>
+        <div style={{ padding: 14, fontSize: 13, lineHeight: 1.45 }}>
+          <div style={{ fontWeight: 700, marginBottom: 6 }}>
+            Tự động · Binance + vàng
+          </div>
+          <div style={{ color: 'var(--muted)' }}>
+            Coin &amp; USDT: <b>Binance</b> (P2P cho USDT/VND). Vàng nhẫn:{' '}
+            <b>ước từ giá thế giới → đ/chỉ</b> (tạm, có thể chỉnh tay). App tự
+            refresh ~3 phút khi mở.
+          </div>
+        </div>
+        <div style={{ padding: '0 14px 14px' }}>
+          <button
+            className="btn-primary"
+            type="button"
+            disabled={fetching || autoStatus === 'loading'}
+            onClick={() => void pullLive()}
+          >
+            {fetching ? 'Đang lấy giá…' : 'Lấy giá live ngay'}
+          </button>
+        </div>
+      </div>
+
       <div className="sec" style={{ marginTop: 4 }}>
         <h2>Nhẫn 9999 · 2 chiều</h2>
       </div>
@@ -2048,18 +2145,19 @@ function Prices() {
         </div>
       </div>
       <div className="sec">
-        <h2>USDT OTC</h2>
+        <h2>USDT · Binance</h2>
       </div>
       <div className="card">
         <div className="field">
           <label>VND / 1 USDT</label>
           <MoneyInput value={usdtP} onChange={setUsdtP} unit="đ" />
+          <div className="hint">Mặc định lấy Binance P2P · có thể sửa tay</div>
         </div>
       </div>
       {cryptos.length > 0 && (
         <>
           <div className="sec">
-            <h2>Coin (USDT)</h2>
+            <h2>Coin · Binance (USDT)</h2>
           </div>
           <div className="card">
             {cryptos.map((c) => (
@@ -2096,7 +2194,7 @@ function Prices() {
             assetId: usdt.id,
             price: moneyNum(usdtP),
             currency: 'VND',
-            label: 'OTC',
+            label: 'Binance',
             quotedAt: t,
           })
           updateSettings({ defaultUsdtVnd: moneyNum(usdtP) || 25650 })
@@ -2107,6 +2205,7 @@ function Prices() {
                 assetId: c.id,
                 price: p,
                 currency: 'USDT',
+                label: 'Binance',
                 quotedAt: t,
               })
             }
