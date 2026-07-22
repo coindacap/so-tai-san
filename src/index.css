@@ -321,6 +321,13 @@ select {
   font-weight: 750;
   letter-spacing: -0.02em;
 }
+.home-asset-end .chip {
+  max-width: 160px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
+}
 
 .home-links {
   margin-top: 18px;

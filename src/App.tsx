@@ -600,7 +600,12 @@ function Home({
           </div>
           <div className="home-asset-end">
             <div className="amt num">{mask(privacy, fmtVnd(buckets.gold.value, true))}</div>
-            <div className={`chip ${pctClass(buckets.gold.pnlPct)}`}>{fmtPct(buckets.gold.pnlPct)}</div>
+            <div className={`chip ${pctClass(buckets.gold.pnl)}`}>
+              {mask(
+                privacy,
+                `${fmtSignedVnd(buckets.gold.pnl, true)} · ${fmtPct(buckets.gold.pnlPct)}`,
+              )}
+            </div>
           </div>
         </button>
         <button
@@ -615,7 +620,12 @@ function Home({
           </div>
           <div className="home-asset-end">
             <div className="amt num">{mask(privacy, fmtVnd(buckets.usdt.value, true))}</div>
-            <div className={`chip ${pctClass(buckets.usdt.pnlPct)}`}>{fmtPct(buckets.usdt.pnlPct)}</div>
+            <div className={`chip ${pctClass(buckets.usdt.pnl)}`}>
+              {mask(
+                privacy,
+                `${fmtSignedVnd(buckets.usdt.pnl, true)} · ${fmtPct(buckets.usdt.pnlPct)}`,
+              )}
+            </div>
           </div>
         </button>
         <button type="button" className="home-asset" onClick={() => setScreen('assets')}>
@@ -628,7 +638,12 @@ function Home({
           </div>
           <div className="home-asset-end">
             <div className="amt num">{mask(privacy, fmtVnd(buckets.crypto.value, true))}</div>
-            <div className={`chip ${pctClass(buckets.crypto.pnlPct)}`}>{fmtPct(buckets.crypto.pnlPct)}</div>
+            <div className={`chip ${pctClass(buckets.crypto.pnl)}`}>
+              {mask(
+                privacy,
+                `${fmtSignedVnd(buckets.crypto.pnl, true)} · ${fmtPct(buckets.crypto.pnlPct)}`,
+              )}
+            </div>
           </div>
         </button>
         <button type="button" className="home-asset" onClick={() => setScreen('cash')}>
@@ -777,9 +792,15 @@ function Assets({
                   <div className="amt num">
                     {mask(privacy, fmtVnd(p.marketValueVnd, true))}
                   </div>
-                  {p.asset.symbol !== 'VND' && (
-                    <div className={`d ${pctClass(p.unrealizedPnLPct)}`} style={{ fontWeight: 650 }}>
-                      {fmtPct(p.unrealizedPnLPct)}
+                  {p.asset.symbol !== 'VND' && p.qtyHold > 0 && (
+                    <div
+                      className={`d ${pctClass(p.unrealizedPnLVnd)}`}
+                      style={{ fontWeight: 700, fontSize: 12 }}
+                    >
+                      {mask(
+                        privacy,
+                        `${fmtSignedVnd(p.unrealizedPnLVnd, true)} · ${fmtPct(p.unrealizedPnLPct)}`,
+                      )}
                     </div>
                   )}
                 </div>
