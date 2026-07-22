@@ -96,6 +96,7 @@ const defaultSettings: AppSettings = {
   privacyMode: false,
   defaultUsdtVnd: 25_650,
   hasOnboarded: false,
+  autoGoldPrice: false,
 }
 
 function hasAnyData(s: {
@@ -1570,6 +1571,7 @@ export const useStore = create<Store>()(
         const settings = {
           ...defaultSettings,
           ...p.settings,
+          autoGoldPrice: p.settings?.autoGoldPrice ?? false,
           hasOnboarded:
             p.settings?.hasOnboarded ||
             hasAnyData({

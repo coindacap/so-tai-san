@@ -53,6 +53,12 @@ export interface AppSettings {
   defaultUsdtVnd: number
   /** Đã qua màn chào / import — không quay lại onboarding khi reload */
   hasOnboarded: boolean
+  /**
+   * Auto-cập nhật giá vàng nhẫn từ XAU (ước lượng).
+   * Mặc định TẮT — tránh đè giá tiệm / tay.
+   * Coin + USDT vẫn auto bất kể flag này.
+   */
+  autoGoldPrice: boolean
 }
 
 /** Sổ tiết kiệm ngân hàng / quỹ */

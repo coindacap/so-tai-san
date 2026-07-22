@@ -2053,6 +2053,7 @@ function Prices() {
   const gold = assets.find((a) => a.symbol === 'NHAN9999')!
   const usdt = assets.find((a) => a.symbol === 'USDT')!
   const cryptos = assets.filter((a) => a.assetClass === 'crypto')
+  const settings = useStore((s) => s.settings)
   const { refresh, status: autoStatus } = useAutoPrices(false)
 
   const [bid, setBid] = useState(String(quotes[gold.id]?.priceBid ?? 7820000))
@@ -2085,15 +2086,19 @@ function Prices() {
     })
   }, [quotes, gold.id, usdt.id, cryptos])
 
-  async function pullLive() {
+  async function pullLive(includeGoldInStore: boolean) {
     setFetching(true)
     try {
-      const live = await refresh(false)
+      // Coin + USDT luôn ghi store; vàng chỉ ghi store nếu bật auto hoặc user chọn
+      const live = await refresh(false, {
+        forceGold: includeGoldInStore || !!settings.autoGoldPrice,
+      })
       if (!live) {
         showToast('Không lấy được giá — kiểm tra mạng')
         return
       }
       if (live.usdtVnd) setUsdtP(String(live.usdtVnd))
+      // Form vàng: luôn điền ước lượng để xem / Lưu tay
       if (live.goldBid) setBid(String(live.goldBid))
       if (live.goldAsk) setAsk(String(live.goldAsk))
       if (live.goldLabel) setLabel(live.goldLabel)
@@ -2105,10 +2110,20 @@ function Prices() {
         })
         return next
       })
-      const msg =
-        live.notes.slice(0, 2).join(' · ') ||
-        (live.errors[0] ? live.errors[0] : 'Đã lấy giá live')
-      showToast(msg)
+      const parts = [
+        live.usdtVnd
+          ? `USDT ${live.usdtVnd.toLocaleString('vi-VN')}đ`
+          : null,
+        Object.keys(live.coins).length
+          ? `Coin ${Object.keys(live.coins).length} mã`
+          : null,
+        includeGoldInStore || settings.autoGoldPrice
+          ? 'Đã áp giá vàng ước'
+          : live.goldBid
+            ? 'Vàng điền form (chưa ghi sổ — bấm Lưu giá)'
+            : null,
+      ].filter(Boolean)
+      showToast(parts.join(' · ') || live.errors[0] || 'Đã lấy giá live')
     } finally {
       setFetching(false)
     }
@@ -2127,22 +2142,49 @@ function Prices() {
       <div className="card" style={{ marginBottom: 12 }}>
         <div style={{ padding: 14, fontSize: 13, lineHeight: 1.45 }}>
           <div style={{ fontWeight: 700, marginBottom: 6 }}>
-            Tự động · Binance + vàng
+            Tự động giá
           </div>
           <div style={{ color: 'var(--muted)' }}>
-            Coin &amp; USDT: <b>Binance</b> (P2P cho USDT/VND). Vàng nhẫn:{' '}
-            <b>ước từ giá thế giới → đ/chỉ</b> (tạm, có thể chỉnh tay). App tự
-            refresh ~3 phút khi mở.
+            <b>Coin + USDT</b> luôn auto Binance (~3 phút).{' '}
+            <b>Vàng nhẫn</b> mặc định <b>không auto</b> — giữ giá tiệm/tay, tránh
+            P/L lệch.
           </div>
         </div>
-        <div style={{ padding: '0 14px 14px' }}>
+        <div className="switch-row">
+          <div>
+            <div style={{ fontWeight: 650 }}>Auto giá vàng (ước XAU)</div>
+            <div style={{ fontSize: 12, color: 'var(--muted)' }}>
+              Bật thì mỗi lần refresh ghi đè giá nhẫn
+            </div>
+          </div>
+          <button
+            className="btn-secondary"
+            type="button"
+            style={{ width: 'auto', margin: 0, padding: '8px 14px', fontSize: 14 }}
+            onClick={() =>
+              updateSettings({ autoGoldPrice: !settings.autoGoldPrice })
+            }
+          >
+            {settings.autoGoldPrice ? 'Đang bật' : 'Tắt'}
+          </button>
+        </div>
+        <div style={{ padding: '0 14px 14px', display: 'grid', gap: 8 }}>
           <button
             className="btn-primary"
             type="button"
             disabled={fetching || autoStatus === 'loading'}
-            onClick={() => void pullLive()}
+            onClick={() => void pullLive(false)}
           >
-            {fetching ? 'Đang lấy giá…' : 'Lấy giá live ngay'}
+            {fetching ? 'Đang lấy giá…' : 'Lấy coin + USDT live'}
+          </button>
+          <button
+            className="btn-secondary"
+            type="button"
+            style={{ margin: 0 }}
+            disabled={fetching || autoStatus === 'loading'}
+            onClick={() => void pullLive(true)}
+          >
+            Lấy + áp giá vàng ước vào sổ
           </button>
         </div>
       </div>
@@ -2469,6 +2511,23 @@ function Settings() {
             </div>
           </div>
           <span style={{ fontWeight: 700, color: 'var(--green-ink)' }}>Bật</span>
+        </div>
+        <div className="switch-row">
+          <div>
+            <div style={{ fontWeight: 650 }}>Auto giá vàng</div>
+            <div style={{ fontSize: 12, color: 'var(--muted)' }}>
+              Ước XAU → đ/chỉ (mặc định tắt, giữ giá tiệm)
+            </div>
+          </div>
+          <button
+            className="btn-secondary"
+            style={{ width: 'auto', margin: 0, padding: '8px 14px', fontSize: 14 }}
+            onClick={() =>
+              updateSettings({ autoGoldPrice: !settings.autoGoldPrice })
+            }
+          >
+            {settings.autoGoldPrice ? 'Đang bật' : 'Tắt'}
+          </button>
         </div>
       </div>
 

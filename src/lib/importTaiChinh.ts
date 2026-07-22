@@ -488,6 +488,7 @@ export function convertTaiChinhBackup(raw: unknown): {
     privacyMode: false,
     defaultUsdtVnd: lastUsdtRate,
     hasOnboarded: true,
+    autoGoldPrice: false,
   }
 
   report.notes.push(
