@@ -20,6 +20,12 @@ import {
   isTaiChinhBackup,
   parseImportText,
 } from '../lib/importTaiChinh'
+import {
+  listSafetyBackups,
+  pushSafetyBackup,
+  getSafetyBackup,
+  type SafetyReason,
+} from '../lib/localBackup'
 
 const STORAGE_KEY = 'so-tai-san-v1'
 
@@ -333,7 +339,25 @@ interface Actions {
     savings?: SavingsAccount[]
     loans?: Loan[]
   }) => void
+  /** Chụp bản an toàn (trước ghi đè). reason: import | cloud-pull | reset | manual */
+  saveSafetyBackup: (reason: SafetyReason) => string | null
+  listSafetyBackups: () => ReturnType<typeof listSafetyBackups>
+  restoreSafetyBackup: (
+    id: string,
+  ) => { ok: true; message: string } | { ok: false; error: string }
   resetAll: () => void
+}
+
+function snapshotCounts(s: {
+  transactions: unknown[]
+  savings: unknown[]
+  loans: unknown[]
+}) {
+  return {
+    tx: s.transactions.length,
+    savings: s.savings.length,
+    loans: s.loans.length,
+  }
 }
 
 type Store = AppState & NavState & Actions
@@ -1442,6 +1466,15 @@ export const useStore = create<Store>()(
       },
 
       applyCloudSnapshot: (data) => {
+        // An toàn: chụp local trước khi cloud ghi đè
+        const cur = get()
+        if (hasAnyData(cur)) {
+          pushSafetyBackup(
+            'cloud-pull',
+            cur.exportJson(),
+            snapshotCounts(cur),
+          )
+        }
         const loans = (data.loans ?? []).map((l) => ({
           ...l,
           interestPaid: l.interestPaid ?? 0,
@@ -1468,9 +1501,38 @@ export const useStore = create<Store>()(
         })
       },
 
+      saveSafetyBackup: (reason) => {
+        const s = get()
+        return pushSafetyBackup(reason, s.exportJson(), snapshotCounts(s))
+      },
+
+      listSafetyBackups: () => listSafetyBackups(),
+
+      restoreSafetyBackup: (id) => {
+        const bk = getSafetyBackup(id)
+        if (!bk?.payload) return { ok: false, error: 'Không tìm thấy bản lưu' }
+        // Chụp sổ hiện tại trước khi khôi phục
+        const cur = get()
+        if (hasAnyData(cur)) {
+          pushSafetyBackup('manual', cur.exportJson(), snapshotCounts(cur))
+        }
+        const res = get().importJson(bk.payload)
+        if (!res.ok) return res
+        return {
+          ok: true,
+          message: `Đã khôi phục bản ${bk.label} · ${new Date(bk.createdAt).toLocaleString('vi-VN')}`,
+        }
+      },
+
       importJson: (raw) => {
         try {
           const data = parseImportText(raw) as Record<string, unknown>
+
+          // Chụp sổ hiện tại trước khi import ghi đè
+          const cur = get()
+          if (hasAnyData(cur)) {
+            pushSafetyBackup('import', cur.exportJson(), snapshotCounts(cur))
+          }
 
           // Backup app QuanLyTaiChinh (iOS)
           if (isTaiChinhBackup(data)) {
@@ -1493,8 +1555,9 @@ export const useStore = create<Store>()(
             return {
               ok: true,
               message:
-                report.notes.join(' ') ||
-                `OK: ${report.savings} TK, ${report.loans} vay, ${report.coins} coin`,
+                (report.notes.join(' ') ||
+                  `OK: ${report.savings} TK, ${report.loans} vay, ${report.coins} coin`) +
+                ' · Đã giữ bản local cũ trong Sao lưu an toàn',
             }
           }
 
@@ -1516,7 +1579,11 @@ export const useStore = create<Store>()(
               screen: 'home',
               detailAssetId: null,
             })
-            return { ok: true, message: 'Đã import backup Sổ Tài Sản' }
+            return {
+              ok: true,
+              message:
+                'Đã import backup Sổ Tài Sản · Bản local cũ nằm trong Sao lưu an toàn',
+            }
           }
 
           const keys = Object.keys(data).slice(0, 8).join(', ')
@@ -1532,7 +1599,11 @@ export const useStore = create<Store>()(
         }
       },
 
-      resetAll: () =>
+      resetAll: () => {
+        const cur = get()
+        if (hasAnyData(cur)) {
+          pushSafetyBackup('reset', cur.exportJson(), snapshotCounts(cur))
+        }
         set({
           assets: seedAssets(),
           transactions: [],
@@ -1542,7 +1613,8 @@ export const useStore = create<Store>()(
           loans: [],
           screen: 'onboarding',
           detailAssetId: null,
-        }),
+        })
+      },
     }),
     {
       name: STORAGE_KEY,

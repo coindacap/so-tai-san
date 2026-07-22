@@ -2350,12 +2350,21 @@ function Settings() {
   const exportJson = useStore((s) => s.exportJson)
   const importJson = useStore((s) => s.importJson)
   const resetAll = useStore((s) => s.resetAll)
+  const listSafetyBackups = useStore((s) => s.listSafetyBackups)
+  const restoreSafetyBackup = useStore((s) => s.restoreSafetyBackup)
+  const saveSafetyBackup = useStore((s) => s.saveSafetyBackup)
   const showToast = useStore((s) => s.showToast)
   const setScreen = useStore((s) => s.setScreen)
   const fileRef = useRef<HTMLInputElement>(null)
   const [pasteOpen, setPasteOpen] = useState(false)
   const [pasteText, setPasteText] = useState('')
   const [importing, setImporting] = useState(false)
+  const [safetyOpen, setSafetyOpen] = useState(false)
+  const [safetyTick, setSafetyTick] = useState(0)
+  const safetyList = useMemo(() => {
+    void safetyTick
+    return listSafetyBackups()
+  }, [listSafetyBackups, safetyTick])
 
   function applyImport(text: string): boolean {
     const trimmed = text.trim()
@@ -2586,7 +2595,95 @@ function Settings() {
           </div>
           <span className="chev">{pasteOpen ? '˄' : '›'}</span>
         </button>
+        <button
+          className="row"
+          type="button"
+          onClick={() => {
+            const id = saveSafetyBackup('manual')
+            setSafetyTick((n) => n + 1)
+            showToast(
+              id
+                ? 'Đã chụp bản an toàn trên máy'
+                : 'Sổ trống — không cần chụp',
+            )
+          }}
+        >
+          <div className="body">
+            <div className="t">Chụp bản an toàn ngay</div>
+            <div className="d">Giữ trên máy (tối đa 5 bản)</div>
+          </div>
+          <span className="chev">›</span>
+        </button>
+        <button
+          className="row"
+          type="button"
+          onClick={() => {
+            setSafetyOpen((v) => !v)
+            setSafetyTick((n) => n + 1)
+          }}
+        >
+          <div className="body">
+            <div className="t">Sao lưu an toàn ({safetyList.length})</div>
+            <div className="d">
+              Tự chụp trước import / kéo cloud / xóa sổ
+            </div>
+          </div>
+          <span className="chev">{safetyOpen ? '˄' : '›'}</span>
+        </button>
       </div>
+
+      {safetyOpen && (
+        <div className="card" style={{ marginTop: 10 }}>
+          {safetyList.length === 0 ? (
+            <div style={{ padding: 14, color: 'var(--muted)', fontSize: 13 }}>
+              Chưa có bản an toàn. Sẽ tự tạo khi import, kéo cloud hoặc xóa sổ.
+            </div>
+          ) : (
+            safetyList.map((b) => (
+              <div key={b.id} className="switch-row">
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{ fontWeight: 650, fontSize: 14 }}>{b.label}</div>
+                  <div style={{ fontSize: 12, color: 'var(--muted)' }}>
+                    {new Date(b.createdAt).toLocaleString('vi-VN')}
+                    {' · '}
+                    {b.tx} GD · {b.savings} TK · {b.loans} vay
+                  </div>
+                </div>
+                <button
+                  className="btn-secondary"
+                  type="button"
+                  style={{
+                    width: 'auto',
+                    margin: 0,
+                    padding: '8px 12px',
+                    fontSize: 13,
+                    flexShrink: 0,
+                  }}
+                  onClick={() => {
+                    if (
+                      !confirm(
+                        `Khôi phục bản ${b.label}?\nSổ hiện tại sẽ được chụp lại trước khi ghi đè.`,
+                      )
+                    ) {
+                      return
+                    }
+                    const res = restoreSafetyBackup(b.id)
+                    setSafetyTick((n) => n + 1)
+                    if (!res.ok) {
+                      showToast(res.error)
+                      return
+                    }
+                    showToast(res.message)
+                    setScreen('home')
+                  }}
+                >
+                  Khôi phục
+                </button>
+              </div>
+            ))
+          )}
+        </div>
+      )}
 
       {pasteOpen && (
         <div className="card" style={{ marginTop: 10 }}>
@@ -2679,9 +2776,14 @@ function Settings() {
           className="row"
           type="button"
           onClick={() => {
-            if (confirm('Xoá toàn bộ dữ liệu trên máy này?')) {
+            if (
+              confirm(
+                'Xoá toàn bộ dữ liệu trên máy này?\nSổ hiện tại sẽ được chụp vào Sao lưu an toàn (nếu còn data).',
+              )
+            ) {
               resetAll()
-              showToast('Đã reset')
+              setSafetyTick((n) => n + 1)
+              showToast('Đã reset · xem Sao lưu an toàn để khôi phục')
             }
           }}
         >
@@ -2689,7 +2791,7 @@ function Settings() {
             <div className="t" style={{ color: 'var(--down)' }}>
               Xoá toàn bộ dữ liệu
             </div>
-            <div className="d">Không thể hoàn tác</div>
+            <div className="d">Có bản an toàn trên máy trước khi xóa</div>
           </div>
         </button>
       </div>
