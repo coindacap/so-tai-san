@@ -359,6 +359,11 @@ export function CloudSyncPanel() {
       setStatus('Nhập email và mật khẩu')
       return
     }
+    // Huong90@ = 8 ký tự — nếu thấy "6 ký tự" trước đây là map lỗi sai, đã sửa
+    if (password.length < 6) {
+      setStatus(`Mật khẩu đang ${password.length} ký tự — cần tối thiểu 6`)
+      return
+    }
     setBusy(true)
     setStatus('')
     try {
@@ -564,6 +569,9 @@ export function CloudSyncPanel() {
               autoComplete={
                 mode === 'login' ? 'current-password' : 'new-password'
               }
+              autoCapitalize="off"
+              autoCorrect="off"
+              spellCheck={false}
               style={{ fontSize: 17, fontWeight: 600 }}
             />
             <div className="hint">

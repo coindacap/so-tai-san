@@ -197,18 +197,34 @@ export async function pushSnapshot(
 
 function mapAuthError(msg: string): string {
   const m = msg.toLowerCase()
-  if (m.includes('invalid login')) return 'Sai email hoặc mật khẩu'
+  if (m.includes('invalid login') || m.includes('invalid credentials'))
+    return 'Sai email hoặc mật khẩu'
   if (m.includes('email not confirmed'))
-    return 'Email chưa xác nhận — tắt Confirm email trong Supabase (Auth → Email)'
-  if (m.includes('user already registered')) return 'Email đã đăng ký — hãy đăng nhập'
-  if (m.includes('same password')) return 'Mật khẩu mới phải khác mật khẩu cũ'
-  if (m.includes('password should be') || m.includes('at least'))
+    return 'Email chưa xác nhận — kiểm tra hộp thư hoặc thử Quên MK'
+  if (m.includes('user already registered') || m.includes('already been registered'))
+    return 'Email đã đăng ký — hãy đăng nhập (tab Đăng nhập)'
+  if (m.includes('same password') || m.includes('different from the old'))
+    return 'Mật khẩu mới phải khác mật khẩu cũ'
+  // Chỉ báo "tối thiểu 6" khi lỗi thật sự về độ dài — KHÔNG gộp mọi lỗi có chữ password
+  if (
+    (m.includes('password') || m.includes('mật khẩu')) &&
+    (m.includes('at least') ||
+      m.includes('minimum') ||
+      m.includes('too short') ||
+      m.includes('6 character') ||
+      m.includes('least 6'))
+  ) {
     return 'Mật khẩu tối thiểu 6 ký tự'
-  if (m.includes('password')) return 'Mật khẩu không hợp lệ (tối thiểu 6 ký tự)'
+  }
+  if (m.includes('weak') || m.includes('easy to guess') || m.includes('pwned'))
+    return 'Mật khẩu quá yếu / dễ đoán — thử thêm ký tự hoặc số'
   if (m.includes('rate limit') || m.includes('too many') || m.includes('security purposes'))
-    return 'Thử quá nhiều lần — đợi khoảng 1 phút rồi gửi lại'
+    return 'Thử quá nhiều lần — đợi khoảng 1 phút rồi thử lại'
   if (m.includes('redirect') || m.includes('url not allowed'))
     return 'Link reset chưa được phép — thêm domain app vào Supabase Auth → URL Configuration'
+  if (m.includes('network') || m.includes('fetch'))
+    return 'Lỗi mạng — kiểm tra Wi‑Fi / 4G rồi thử lại'
+  // Giữ nguyên message gốc (dễ debug) thay vì map sai thành "6 ký tự"
   return msg
 }
 
