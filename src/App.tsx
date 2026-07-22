@@ -48,6 +48,8 @@ export default function App() {
   const [sheet, setSheet] = useState(false)
   const [ready, setReady] = useState(() => useStore.persist.hasHydrated())
   const [cloudLoggedIn, setCloudLoggedIn] = useState(false)
+  /** Menu dưới: hiện khi kéo lên / đầu trang; ẩn nhẹ khi kéo xuống list dài */
+  const [chromeVisible, setChromeVisible] = useState(true)
 
   // Chờ localStorage load xong (tránh luôn rơi về onboarding trên iPhone)
   useEffect(() => {
@@ -123,6 +125,37 @@ export default function App() {
       useStore.getState().goBack({ fromBrowser: true }),
     )
   }, [])
+
+  // Menu đáy: kéo lên nhẹ → hiện ngay; kéo xuống → ẩn bớt để xem list
+  useEffect(() => {
+    let lastY = 0
+    const onScroll = (e: Event) => {
+      const t = e.target as HTMLElement | null
+      if (!t?.classList?.contains('scroll')) return
+      const y = t.scrollTop
+      const dy = y - lastY
+      if (y <= 20) {
+        setChromeVisible(true)
+      } else if (dy < -3) {
+        // kéo lên dù nhẹ
+        setChromeVisible(true)
+      } else if (dy > 12) {
+        setChromeVisible(false)
+      }
+      lastY = y
+    }
+    const app = document.querySelector('.app')
+    app?.addEventListener('scroll', onScroll, { capture: true, passive: true })
+    return () =>
+      app?.removeEventListener('scroll', onScroll, {
+        capture: true,
+      } as EventListenerOptions)
+  }, [])
+
+  // Đổi màn → luôn hiện menu
+  useEffect(() => {
+    setChromeVisible(true)
+  }, [store.screen])
 
   // Vuốt từ trái → phải = quay lại (nhạy hơn, không cần kéo mạnh)
   useEffect(() => {
@@ -278,7 +311,7 @@ export default function App() {
   }
 
   return (
-    <div className="app">
+    <div className="app" data-chrome={chromeVisible ? 'on' : 'off'}>
       <PasswordRecoveryGate />
       {store.screen === 'onboarding' && <Onboarding />}
       {store.screen === 'home' && (
@@ -317,7 +350,10 @@ export default function App() {
       {store.screen === 'loans-trash' && <LoansTrash privacy={privacy} />}
 
       {showTabs && (
-        <nav className="tabbar">
+        <nav
+          className={`tabbar${chromeVisible ? '' : ' is-away'}`}
+          aria-hidden={!chromeVisible}
+        >
           <Tab id="home" label="Tài sản" ico="◆" />
           <Tab id="savings" label="Tiết kiệm" ico="▣" />
           <button className="fab" onClick={() => setSheet(true)} aria-label="Thêm">
@@ -4529,7 +4565,7 @@ function LoanDetail({ privacy }: { privacy: boolean }) {
 
       {err && <div className="error">{err}</div>}
 
-      {/* Menu thao tác nhanh dưới đáy */}
+      {/* Menu thao tác nhanh dưới đáy — fixed, kéo lên là hiện */}
       <div className="bottom-actions">
         {active ? (
           <>

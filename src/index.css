@@ -85,7 +85,10 @@ select {
 .app {
   max-width: 430px;
   margin: 0 auto;
-  min-height: 100%;
+  /* Khóa chiều cao viewport — tránh tabbar trôi xuống đáy list dài */
+  height: 100%;
+  height: 100dvh;
+  max-height: 100dvh;
   min-height: 100dvh;
   background: var(--bg);
   position: relative;
@@ -93,9 +96,7 @@ select {
   flex-direction: column;
   overflow: hidden;
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.04);
-  /* Cho phép app bắt vuốt ngang back; scroll dọc vẫn ở .scroll */
   touch-action: pan-y;
-  will-change: transform;
 }
 
 /* Vùng chạm mép trái — dễ bắt vuốt back trên iPhone */
@@ -118,6 +119,8 @@ select {
     padding: 24px 0;
   }
   .app {
+    height: calc(100dvh - 48px);
+    max-height: calc(100dvh - 48px);
     min-height: calc(100dvh - 48px);
     border-radius: 28px;
     overflow: hidden;
@@ -129,6 +132,7 @@ select {
 
 .scroll {
   flex: 1;
+  min-height: 0; /* quan trọng: list dài cuộn trong khung, không đẩy tabbar */
   overflow-y: auto;
   overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
@@ -137,6 +141,7 @@ select {
 }
 
 .scroll.plain {
+  /* màn con: chừa đáy nếu có bottom-actions / an toàn chạm */
   padding-bottom: calc(28px + var(--safe-b));
 }
 
@@ -903,16 +908,15 @@ select {
   border: 1px solid rgba(0, 0, 0, 0.03);
 }
 
-/* Tab bar */
+/* Tab bar — dính viewport, không trôi theo list dài */
 .tabbar {
   position: fixed;
   left: 50%;
-  transform: translateX(-50%);
   bottom: 0;
   width: 100%;
   max-width: 430px;
   height: var(--tab-h);
-  background: rgba(255, 255, 255, 0.86);
+  background: rgba(255, 255, 255, 0.94);
   backdrop-filter: saturate(180%) blur(24px);
   -webkit-backdrop-filter: saturate(180%) blur(24px);
   border-top: 0.5px solid rgba(0, 0, 0, 0.08);
@@ -920,7 +924,15 @@ select {
   grid-template-columns: 1fr 1fr 64px 1fr 1fr;
   align-items: start;
   padding: 7px 6px var(--safe-b);
-  z-index: 40;
+  z-index: 60;
+  transform: translateX(-50%);
+  transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+  box-shadow: 0 -6px 20px rgba(0, 0, 0, 0.06);
+}
+/* Ẩn tạm khi kéo xuống — kéo lên nhẹ là hiện lại */
+.tabbar.is-away {
+  transform: translateX(-50%) translateY(110%);
+  pointer-events: none;
 }
 .tab {
   display: flex;
@@ -1836,7 +1848,6 @@ select {
 .bottom-actions {
   position: fixed;
   left: 50%;
-  transform: translateX(-50%);
   bottom: 0;
   width: 100%;
   max-width: 430px;
@@ -1844,12 +1855,19 @@ select {
   grid-template-columns: repeat(4, 1fr);
   gap: 6px;
   padding: 10px 12px calc(10px + var(--safe-b));
-  background: rgba(255, 255, 255, 0.94);
+  background: rgba(255, 255, 255, 0.96);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border-top: 0.5px solid rgba(0, 0, 0, 0.08);
-  z-index: 35;
-  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.06);
+  z-index: 55;
+  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.08);
+  transform: translateX(-50%);
+  transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+}
+/* Ẩn/hiện theo scroll — class gắn từ .app data-chrome */
+.app[data-chrome='off'] .bottom-actions {
+  transform: translateX(-50%) translateY(110%);
+  pointer-events: none;
 }
 .bottom-actions button {
   padding: 12px 6px;
