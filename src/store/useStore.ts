@@ -311,6 +311,27 @@ interface Actions {
   ) =>
     | { ok: true; message?: string }
     | { ok: false; error: string }
+  /** Snapshot để đẩy cloud (không gồm nav/toast) */
+  getCloudSnapshot: () => {
+    version: number
+    assets: Asset[]
+    transactions: Transaction[]
+    quotes: Record<string, PriceQuote>
+    settings: AppSettings
+    savings: SavingsAccount[]
+    loans: Loan[]
+    savedAt: string
+  }
+  /** Áp snapshot từ cloud (ghi đè data, giữ localStorage sync) */
+  applyCloudSnapshot: (data: {
+    version?: number
+    assets: Asset[]
+    transactions?: Transaction[]
+    quotes?: Record<string, PriceQuote>
+    settings?: Partial<AppSettings>
+    savings?: SavingsAccount[]
+    loans?: Loan[]
+  }) => void
   resetAll: () => void
 }
 
@@ -1403,6 +1424,47 @@ export const useStore = create<Store>()(
           null,
           2,
         )
+      },
+
+      getCloudSnapshot: () => {
+        const s = get()
+        return {
+          version: s.version,
+          assets: s.assets,
+          transactions: s.transactions,
+          quotes: s.quotes,
+          settings: s.settings,
+          savings: s.savings,
+          loans: s.loans,
+          savedAt: nowIso(),
+        }
+      },
+
+      applyCloudSnapshot: (data) => {
+        const loans = (data.loans ?? []).map((l) => ({
+          ...l,
+          interestPaid: l.interestPaid ?? 0,
+          deletedAt: l.deletedAt ?? null,
+          interestType: l.interestType ?? ('annual' as const),
+          interestValue: l.interestValue ?? l.rateAnnual ?? 0,
+        }))
+        const settings = {
+          ...defaultSettings,
+          ...data.settings,
+          hasOnboarded: true,
+        }
+        set({
+          version: data.version ?? 2,
+          assets: data.assets?.length ? data.assets : seedAssets(),
+          transactions: data.transactions ?? [],
+          quotes: data.quotes ?? seedQuotes(),
+          settings,
+          savings: data.savings ?? [],
+          loans,
+          screen: 'home',
+          detailAssetId: null,
+          navStack: [],
+        })
       },
 
       importJson: (raw) => {

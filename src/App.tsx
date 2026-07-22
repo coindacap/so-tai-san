@@ -24,7 +24,9 @@ import {
 } from './lib/format'
 import type { Loan, LoanInterestType, SavingsAccount, Screen } from './types'
 import { MoneyInput, moneyNum } from './components/MoneyInput'
+import { CloudSyncPanel, useCloudAutoSync } from './components/CloudSync'
 import { formatMoneyInput } from './lib/format'
+import { cloudReady, getCloudUser } from './lib/cloudSync'
 
 function pctClass(n: number | null | undefined) {
   if (n == null || n === 0) return 'flat'
@@ -39,6 +41,7 @@ export default function App() {
   const store = useStore()
   const [sheet, setSheet] = useState(false)
   const [ready, setReady] = useState(() => useStore.persist.hasHydrated())
+  const [cloudLoggedIn, setCloudLoggedIn] = useState(false)
 
   // Chờ localStorage load xong (tránh luôn rơi về onboarding trên iPhone)
   useEffect(() => {
@@ -61,6 +64,18 @@ export default function App() {
     const unsub = useStore.persist.onFinishHydration(done)
     return unsub
   }, [])
+
+  // Auto-sync cloud khi đã đăng nhập
+  useEffect(() => {
+    if (!cloudReady()) return
+    const refresh = () => {
+      void getCloudUser().then((u) => setCloudLoggedIn(!!u))
+    }
+    refresh()
+    window.addEventListener('so-cloud-auth', refresh)
+    return () => window.removeEventListener('so-cloud-auth', refresh)
+  }, [])
+  useCloudAutoSync(cloudLoggedIn)
 
   const state = {
     assets: store.assets,
@@ -2331,6 +2346,11 @@ function Settings() {
           <span style={{ fontWeight: 700, color: 'var(--green-ink)' }}>Bật</span>
         </div>
       </div>
+
+      <div className="sec">
+        <h2>Cloud · đồng bộ máy</h2>
+      </div>
+      <CloudSyncPanel />
 
       <div className="sec">
         <h2>Sao lưu & khôi phục</h2>
