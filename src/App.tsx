@@ -7,7 +7,6 @@ import {
   sortedTxs,
 } from './lib/calc'
 import {
-  calcLoanInterest,
   calcLoanInterestPerDay,
   calcLoanOutstandingInterest,
   daysUntil,
