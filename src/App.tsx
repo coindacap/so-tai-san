@@ -9,6 +9,7 @@ import {
 import {
   calcLoanInterest,
   calcLoanInterestPerDay,
+  calcLoanOutstandingInterest,
   daysUntil,
   estimateInterest,
   fmtNum,
@@ -3683,15 +3684,7 @@ function LoansList({ privacy }: { privacy: boolean }) {
     return d != null && d < 0
   }).length
   const accrued = open.reduce(
-    (a, l) =>
-      a +
-      calcLoanInterest({
-        remaining: l.remaining,
-        rateAnnual: l.rateAnnual,
-        interestType: l.interestType,
-        interestValue: l.interestValue,
-        lendDate: l.lendDate,
-      }),
+    (a, l) => a + calcLoanOutstandingInterest(l).outstanding,
     0,
   )
 
@@ -4206,13 +4199,8 @@ function LoanDetail({ privacy }: { privacy: boolean }) {
     )
   }
 
-  const accrued = calcLoanInterest({
-    remaining: l.remaining,
-    rateAnnual: l.rateAnnual,
-    interestType: l.interestType,
-    interestValue: l.interestValue,
-    lendDate: l.lendDate,
-  })
+  const interestInfo = calcLoanOutstandingInterest(l)
+  const accrued = interestInfo.outstanding
   const active =
     !l.deletedAt &&
     (l.status === 'open' || l.status === 'partial') &&
@@ -4222,6 +4210,9 @@ function LoanDetail({ privacy }: { privacy: boolean }) {
     l.principal > 0 ? Math.round((paid / l.principal) * 100) : 0
   const due = daysUntil(l.dueDate)
   const interestPaid = l.interestPaid || 0
+  const fromLabel = new Date(interestInfo.fromDate).toLocaleDateString('vi-VN')
+  const interestStartIsLend =
+    interestInfo.fromDate.slice(0, 10) === l.lendDate.slice(0, 10)
 
   return (
     <div className="scroll plain has-bottom-actions">
@@ -4297,6 +4288,10 @@ function LoanDetail({ privacy }: { privacy: boolean }) {
               ),
             )}
             đ/ngày
+            <br />
+            {interestStartIsLend
+              ? `Tính từ ngày vay ${fromLabel} → hôm nay (${interestInfo.days} ngày)`
+              : `Sau lần đóng lãi ${fromLabel} → hôm nay (${interestInfo.days} ngày) · đã thu ${fmtVnd(interestPaid, true)}`}
           </div>
         </div>
 

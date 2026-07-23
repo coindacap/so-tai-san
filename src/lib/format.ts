@@ -113,6 +113,9 @@ export function daysBetween(fromIso: string, toIso?: string): number {
  * - percent_monthly: remaining * interestValue/100 * (days/30)
  * - per_million_daily: remaining/1e6 * interestValue * days  (vd 1000đ/1tr/ngày)
  * - flat_monthly: interestValue * (days/30)  (vd 1.300.000đ/tháng)
+ *
+ * @param fromDate — mốc bắt đầu tính (mặc định = lendDate).
+ *   Sau khi đóng lãi: truyền ngày đóng lãi gần nhất → chỉ tính kỳ mới.
  */
 export function calcLoanInterest(input: {
   remaining: number
@@ -120,9 +123,12 @@ export function calcLoanInterest(input: {
   interestType?: string
   interestValue?: number
   lendDate: string
+  /** Ghi đè mốc bắt đầu (vd. sau lần thu lãi gần nhất) */
+  fromDate?: string
   asOf?: string
 }): number {
-  const days = daysBetween(input.lendDate, input.asOf)
+  const start = input.fromDate || input.lendDate
+  const days = daysBetween(start, input.asOf)
   const months = days / 30
   const type = input.interestType || 'annual'
   const val = input.interestValue ?? 0
@@ -142,6 +148,75 @@ export function calcLoanInterest(input: {
     return rem * (input.rateAnnual / 100) * (days / 365)
   }
   return 0
+}
+
+export type LoanInterestLike = {
+  remaining: number
+  rateAnnual: number
+  interestType?: string
+  interestValue?: number
+  lendDate: string
+  interestPaid?: number
+  payments?: { type?: string; paidAt: string; amount: number }[]
+}
+
+/**
+ * Ngày bắt đầu kỳ lãi chưa thu:
+ * - Chưa đóng lãi lần nào → ngày cho vay
+ * - Đã đóng lãi → ngày đóng lãi gần nhất (kỳ mới sau khi thu)
+ */
+export function loanInterestStartDate(loan: LoanInterestLike): string {
+  const pays = (loan.payments || []).filter(
+    (p) => (p.type || 'principal') === 'interest',
+  )
+  if (pays.length === 0) return loan.lendDate
+  return pays.reduce((best, p) =>
+    p.paidAt > best.paidAt ? p : best,
+  ).paidAt
+}
+
+/**
+ * Lãi tạm tính CÒN LẠI đến hôm nay (chưa thu).
+ * Tính từ mốc vay / sau lần đóng lãi gần nhất → asOf.
+ * Không cộng lại phần đã thu lãi.
+ */
+export function calcLoanOutstandingInterest(
+  loan: LoanInterestLike,
+  asOf?: string,
+): {
+  /** Lãi còn tạm tính (chưa thu) */
+  outstanding: number
+  /** Tổng lãi lý thuyết từ ngày vay → asOf (trên gốc còn) */
+  grossFromStart: number
+  /** Mốc bắt đầu kỳ hiện tại */
+  fromDate: string
+  /** Số ngày trong kỳ hiện tại */
+  days: number
+} {
+  const fromDate = loanInterestStartDate(loan)
+  const outstanding = calcLoanInterest({
+    remaining: loan.remaining,
+    rateAnnual: loan.rateAnnual,
+    interestType: loan.interestType,
+    interestValue: loan.interestValue,
+    lendDate: loan.lendDate,
+    fromDate,
+    asOf,
+  })
+  const grossFromStart = calcLoanInterest({
+    remaining: loan.remaining,
+    rateAnnual: loan.rateAnnual,
+    interestType: loan.interestType,
+    interestValue: loan.interestValue,
+    lendDate: loan.lendDate,
+    asOf,
+  })
+  return {
+    outstanding: Math.max(0, outstanding),
+    grossFromStart: Math.max(0, grossFromStart),
+    fromDate,
+    days: daysBetween(fromDate, asOf),
+  }
 }
 
 /** Lãi 1 ngày (ước) theo kiểu lãi — dùng gợi ý UI */
