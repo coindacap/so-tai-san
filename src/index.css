@@ -466,10 +466,6 @@ select {
   background: linear-gradient(145deg, #e8efff, #cddcff);
   color: #1b4fd8;
 }
-.mark.stock {
-  background: linear-gradient(145deg, #f3e8ff, #e0d0ff);
-  color: #5b21b6;
-}
 .mark.cash {
   background: linear-gradient(145deg, #f0f0f2, #e4e4e8);
   color: #3a3a40;

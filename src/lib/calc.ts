@@ -167,7 +167,6 @@ export function portfolioSummary(state: AppState) {
   const gold = positions.filter((p) => p.asset.assetClass === 'gold')
   const usdt = positions.filter((p) => p.asset.assetClass === 'stable')
   const crypto = positions.filter((p) => p.asset.assetClass === 'crypto')
-  const stock = positions.filter((p) => p.asset.assetClass === 'stock')
   const cash = positions.filter((p) => p.asset.assetClass === 'cash')
 
   const sumVnd = (ps: PositionView[]) =>
@@ -207,7 +206,6 @@ export function portfolioSummary(state: AppState) {
       gold: bucket(gold),
       usdt: bucket(usdt),
       crypto: bucket(crypto),
-      stock: bucket(stock),
       cash: bucket(cash),
     },
   }
