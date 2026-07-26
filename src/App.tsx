@@ -33,6 +33,11 @@ import { formatMoneyInput } from './lib/format'
 import { cloudReady, getCloudUser } from './lib/cloudSync'
 import { useAutoPrices } from './hooks/useAutoPrices'
 import { bindBrowserBack } from './lib/appHistory'
+import {
+  mapSsiPositionsToStockLines,
+  parseSsiSyncJson,
+  summarizeSsiSync,
+} from './lib/ssi/mapPositions'
 
 function pctClass(n: number | null | undefined) {
   if (n == null || n === 0) return 'flat'
@@ -802,6 +807,26 @@ function Home({
             </div>
           </div>
         </button>
+        <button type="button" className="home-asset" onClick={() => setScreen('assets')}>
+          <div className="mark stock">S</div>
+          <div className="home-asset-mid">
+            <div className="t">Cổ phiếu</div>
+            <div className="d">
+              {buckets.stock.positions.filter((p) => p.qtyHold > 0).length} mã
+              {' · '}
+              SSI
+            </div>
+          </div>
+          <div className="home-asset-end">
+            <div className="amt num">{mask(privacy, fmtVnd(buckets.stock.value, true))}</div>
+            <div className={`chip ${pctClass(buckets.stock.pnl)}`}>
+              {mask(
+                privacy,
+                `${fmtSignedVnd(buckets.stock.pnl, true)} · ${fmtPct(buckets.stock.pnlPct)}`,
+              )}
+            </div>
+          </div>
+        </button>
         <button type="button" className="home-asset" onClick={() => setScreen('cash')}>
           <div className="mark cash">₫</div>
           <div className="home-asset-mid">
@@ -890,6 +915,7 @@ function Assets({
     { title: 'Vàng', items: summary.buckets.gold.positions },
     { title: 'Cầu nối', items: summary.buckets.usdt.positions },
     { title: 'Coin', items: summary.buckets.crypto.positions },
+    { title: 'Cổ phiếu (SSI)', items: summary.buckets.stock.positions },
     { title: 'Tiền mặt', items: summary.buckets.cash.positions },
   ]
 
@@ -926,7 +952,9 @@ function Assets({
                         ? 'usdt'
                         : p.asset.assetClass === 'crypto'
                           ? 'coin'
-                          : 'cash'
+                          : p.asset.assetClass === 'stock'
+                            ? 'stock'
+                            : 'cash'
                   }`}
                 >
                   {p.asset.symbol.slice(0, 1)}
@@ -2693,6 +2721,132 @@ function History() {
   )
 }
 
+function SsiConnectPanel() {
+  const applySsiHoldings = useStore((s) => s.applySsiHoldings)
+  const showToast = useStore((s) => s.showToast)
+  const [open, setOpen] = useState(false)
+  const [jsonText, setJsonText] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  function applyJson() {
+    const parsed = parseSsiSyncJson(jsonText)
+    if (!parsed.ok) {
+      showToast(parsed.error)
+      return
+    }
+    const summary = summarizeSsiSync(parsed.data)
+    if (summary.symbolCount === 0) {
+      showToast('Không có mã nào quantity > 0')
+      return
+    }
+    if (
+      !confirm(
+        `Đồng bộ ${summary.symbolCount} mã CK?\nGiá vốn ~ ${fmtVnd(summary.totalCostVnd, true)}đ` +
+          (summary.cash > 0
+            ? `\nTiền CK (tham khảo): ${fmtVnd(summary.cash, true)}đ`
+            : '') +
+          `\n\nHold hiện tại sẽ được điều chỉnh theo SSI.`,
+      )
+    ) {
+      return
+    }
+    setBusy(true)
+    try {
+      const res = applySsiHoldings({
+        lines: mapSsiPositionsToStockLines(parsed.data.positions),
+        accountNo: parsed.data.accountNo,
+        syncedAt: parsed.data.syncedAt,
+      })
+      if (!res.ok) {
+        showToast(res.error)
+        return
+      }
+      showToast(res.message)
+      setJsonText('')
+      setOpen(false)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="card">
+      <div style={{ padding: 14, fontSize: 13, lineHeight: 1.45 }}>
+        <div style={{ fontWeight: 700, marginBottom: 6 }}>SSI FastConnect</div>
+        <div style={{ color: 'var(--muted)' }}>
+          API chính thức SSI có <b>getEquityPositions</b> (mã, SL, giá vốn).
+          Cần đăng ký developer + OTP. Đồng bộ auto qua server sẽ làm sau khi
+          anh có key.
+        </div>
+      </div>
+      <div className="switch-row">
+        <div>
+          <div style={{ fontWeight: 650 }}>Trạng thái API</div>
+          <div style={{ fontSize: 12, color: 'var(--muted)' }}>
+            Chưa gắn backend · dùng import JSON test
+          </div>
+        </div>
+        <span style={{ fontWeight: 700, color: 'var(--muted)', fontSize: 13 }}>
+          Chờ key
+        </span>
+      </div>
+      <button
+        className="row"
+        type="button"
+        onClick={() =>
+          window.open('https://developers.ssi.com.vn', '_blank', 'noopener')
+        }
+      >
+        <div className="body">
+          <div className="t">Đăng ký FastConnect</div>
+          <div className="d">developers.ssi.com.vn</div>
+        </div>
+        <span className="chev">›</span>
+      </button>
+      <button
+        className="row"
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+      >
+        <div className="body">
+          <div className="t">Import vị thế JSON (test)</div>
+          <div className="d">Dán positions từ sample SSI</div>
+        </div>
+        <span className="chev">{open ? '˄' : '›'}</span>
+      </button>
+      {open && (
+        <div style={{ padding: '0 14px 14px' }}>
+          <div className="field" style={{ margin: 0 }}>
+            <label>JSON sync</label>
+            <textarea
+              className="paste-area"
+              rows={6}
+              value={jsonText}
+              onChange={(e) => setJsonText(e.target.value)}
+              placeholder={`{\n  "accountNo": "1234567",\n  "syncedAt": "2026-07-25T00:00:00.000Z",\n  "positions": [\n    { "symbol": "FPT", "quantity": 100, "costPrice": 95000 }\n  ]\n}`}
+              spellCheck={false}
+              autoCapitalize="off"
+            />
+          </div>
+          <button
+            className="btn-primary"
+            type="button"
+            style={{ marginTop: 10 }}
+            disabled={busy || !jsonText.trim()}
+            onClick={() => applyJson()}
+          >
+            {busy ? 'Đang ghi…' : 'Áp dụng vào sổ CK'}
+          </button>
+          <div className="hint" style={{ marginTop: 8 }}>
+            Chi tiết kỹ thuật: file <code>docs/ssi-fastconnect.md</code> trong
+            project.
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function Settings() {
   const settings = useStore((s) => s.settings)
   const updateSettings = useStore((s) => s.updateSettings)
@@ -2893,6 +3047,11 @@ function Settings() {
         <h2>Cloud · đồng bộ máy</h2>
       </div>
       <CloudSyncPanel />
+
+      <div className="sec">
+        <h2>Chứng khoán SSI</h2>
+      </div>
+      <SsiConnectPanel />
 
       <div className="sec">
         <h2>Sao lưu & khôi phục</h2>

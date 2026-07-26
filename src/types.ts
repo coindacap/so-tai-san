@@ -1,4 +1,4 @@
-export type AssetClass = 'cash' | 'stable' | 'gold' | 'crypto'
+export type AssetClass = 'cash' | 'stable' | 'gold' | 'crypto' | 'stock'
 export type TxKind = 'buy' | 'sell' | 'convert' | 'adjust'
 export type QuoteCurrency = 'VND' | 'USDT'
 
