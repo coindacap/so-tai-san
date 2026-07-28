@@ -3,7 +3,7 @@ import { useStore } from './store/useStore'
 import { portfolioSummary } from './lib/calc'
 import { PasswordRecoveryGate } from './components/CloudSync'
 import { Tab } from './components/Tab'
-import { Action } from './components/Action'
+import { ErrorBoundary } from './components/ErrorBoundary'
 import { cloudReady, getCloudUser } from './lib/cloudSync'
 import { useAutoPrices } from './hooks/useAutoPrices'
 import { useCloudAutoSync } from './hooks/useCloudAutoSync'
@@ -105,7 +105,6 @@ function ScreenFallback() {
 
 export default function App() {
   const store = useStore()
-  const [sheet, setSheet] = useState(false)
   const [ready, setReady] = useState(() => useStore.persist.hasHydrated())
   const [cloudLoggedIn, setCloudLoggedIn] = useState(false)
   /** Menu dưới: hiện khi kéo lên / đầu trang; ẩn nhẹ khi kéo xuống list dài */
@@ -120,7 +119,8 @@ export default function App() {
         s.settings.hasOnboarded ||
         s.transactions.length > 0 ||
         s.savings.length > 0 ||
-        s.loans.length > 0
+        s.loans.length > 0 ||
+        s.expenses.length > 0
       if (has && s.screen === 'onboarding') {
         useStore.setState({ screen: 'home' })
       } else if (!has && s.screen === 'home' && !s.settings.hasOnboarded) {
@@ -385,54 +385,60 @@ export default function App() {
   return (
     <div className="app" data-chrome={chromeVisible ? 'on' : 'off'}>
       <PasswordRecoveryGate />
-      <Suspense fallback={<ScreenFallback />}>
-        {store.screen === 'onboarding' && <Onboarding />}
-        {store.screen === 'home' && (
-          <Home
-            summary={summary}
-            privacy={privacy}
-            onSheet={() => setSheet(true)}
-            savingsTotal={savingsTotal}
-            loansTotal={loansTotal}
-          />
-        )}
-        {store.screen === 'assets' && (
-          <Assets summary={summary} privacy={privacy} />
-        )}
-        {store.screen === 'history' && <History />}
-        {store.screen === 'settings' && <Settings />}
-        {store.screen === 'gold' && <GoldDetail privacy={privacy} />}
-        {store.screen === 'asset-detail' && <AssetDetail privacy={privacy} />}
-        {store.screen === 'buy-gold' && <BuyGold />}
-        {store.screen === 'sell-gold' && <SellGold />}
-        {store.screen === 'usdt' && <UsdtConvert />}
-        {store.screen === 'buy-coin' && <BuyCoin />}
-        {store.screen === 'sell-coin' && <SellCoin />}
-        {store.screen === 'adjust-usdt' && <AdjustUsdt />}
-        {store.screen === 'prices' && <Prices />}
-        {store.screen === 'cash' && <CashAdjust />}
-        {store.screen === 'savings' && <SavingsList privacy={privacy} />}
-        {store.screen === 'savings-form' && <SavingsForm />}
-        {store.screen === 'savings-detail' && (
-          <SavingsDetail privacy={privacy} />
-        )}
-        {store.screen === 'loans' && <LoansList privacy={privacy} />}
-        {store.screen === 'loan-form' && (
-          <LoanForm mode="create" key="loan-create" />
-        )}
-        {store.screen === 'loan-edit' && (
-          <LoanForm mode="edit" key={store.detailAssetId || 'loan-edit'} />
-        )}
-        {store.screen === 'loan-detail' && <LoanDetail privacy={privacy} />}
-        {store.screen === 'loans-trash' && <LoansTrash privacy={privacy} />}
-        {store.screen === 'spend' && <SpendHome privacy={privacy} />}
-        {store.screen === 'spend-form' && <SpendForm />}
-        {store.screen === 'spend-detail' && (
-          <SpendDetail privacy={privacy} />
-        )}
-        {store.screen === 'spend-categories' && <SpendCategories />}
-        {store.screen === 'spend-budget' && <SpendBudget />}
-      </Suspense>
+      <ErrorBoundary
+        onReset={() =>
+          useStore.setState({ screen: 'home', detailAssetId: null, navStack: [] })
+        }
+      >
+        <Suspense fallback={<ScreenFallback />}>
+          {store.screen === 'onboarding' && <Onboarding />}
+          {store.screen === 'home' && (
+            <Home
+              summary={summary}
+              privacy={privacy}
+              onSheet={() => store.setScreen('spend-form', 'expense')}
+              savingsTotal={savingsTotal}
+              loansTotal={loansTotal}
+            />
+          )}
+          {store.screen === 'assets' && (
+            <Assets summary={summary} privacy={privacy} />
+          )}
+          {store.screen === 'history' && <History />}
+          {store.screen === 'settings' && <Settings />}
+          {store.screen === 'gold' && <GoldDetail privacy={privacy} />}
+          {store.screen === 'asset-detail' && <AssetDetail privacy={privacy} />}
+          {store.screen === 'buy-gold' && <BuyGold />}
+          {store.screen === 'sell-gold' && <SellGold />}
+          {store.screen === 'usdt' && <UsdtConvert />}
+          {store.screen === 'buy-coin' && <BuyCoin />}
+          {store.screen === 'sell-coin' && <SellCoin />}
+          {store.screen === 'adjust-usdt' && <AdjustUsdt />}
+          {store.screen === 'prices' && <Prices />}
+          {store.screen === 'cash' && <CashAdjust />}
+          {store.screen === 'savings' && <SavingsList privacy={privacy} />}
+          {store.screen === 'savings-form' && <SavingsForm />}
+          {store.screen === 'savings-detail' && (
+            <SavingsDetail privacy={privacy} />
+          )}
+          {store.screen === 'loans' && <LoansList privacy={privacy} />}
+          {store.screen === 'loan-form' && (
+            <LoanForm mode="create" key="loan-create" />
+          )}
+          {store.screen === 'loan-edit' && (
+            <LoanForm mode="edit" key={store.detailAssetId || 'loan-edit'} />
+          )}
+          {store.screen === 'loan-detail' && <LoanDetail privacy={privacy} />}
+          {store.screen === 'loans-trash' && <LoansTrash privacy={privacy} />}
+          {store.screen === 'spend' && <SpendHome privacy={privacy} />}
+          {store.screen === 'spend-form' && <SpendForm />}
+          {store.screen === 'spend-detail' && (
+            <SpendDetail privacy={privacy} />
+          )}
+          {store.screen === 'spend-categories' && <SpendCategories />}
+          {store.screen === 'spend-budget' && <SpendBudget />}
+        </Suspense>
+      </ErrorBoundary>
 
       {showTabs && (
         <nav
@@ -441,146 +447,18 @@ export default function App() {
         >
           <Tab id="home" label="Tài sản" ico="◆" />
           <Tab id="spend" label="Chi tiêu" ico="◈" />
-          <button className="fab" onClick={() => setSheet(true)} aria-label="Thêm">
+          <button
+            type="button"
+            className="fab"
+            onClick={() => store.setScreen('spend-form', 'expense')}
+            aria-label="Thêm chi tiêu nhanh"
+            title="Ghi chi tiêu"
+          >
             +
           </button>
           <Tab id="loans" label="Cho vay" ico="◎" />
           <Tab id="settings" label="Cài đặt" ico="⚙" />
         </nav>
-      )}
-
-      {sheet && (
-        <div className="sheet-bg" onClick={() => setSheet(false)}>
-          <div className="sheet" onClick={(e) => e.stopPropagation()}>
-            <div className="grab" />
-            <h3>Thêm giao dịch</h3>
-            <div className="group" style={{ marginBottom: 0 }}>
-              <Action
-                mark="₫"
-                cls="cash"
-                title="Nạp / rút tiền mặt VND"
-                desc="Đưa tiền thật vào sổ trước khi mua USDT / vàng"
-                onClick={() => {
-                  setSheet(false)
-                  store.setScreen('cash')
-                }}
-              />
-              <Action
-                mark="U"
-                cls="usdt"
-                title="Đổi VND ↔ USDT"
-                desc="Trừ từ tiền mặt VND trong sổ"
-                onClick={() => {
-                  setSheet(false)
-                  store.setScreen('usdt')
-                }}
-              />
-              <Action
-                mark="C"
-                cls="coin"
-                title="Mua coin bằng USDT"
-                desc="Trừ USDT trong sổ · hoặc ghi hold cũ"
-                onClick={() => {
-                  setSheet(false)
-                  store.setScreen('buy-coin')
-                }}
-              />
-              <Action
-                mark="N"
-                cls="gold"
-                title="Mua nhẫn 9999"
-                desc="Preset 1 · 2 · 5 chỉ · giá bán ra"
-                onClick={() => {
-                  setSheet(false)
-                  store.setScreen('buy-gold')
-                }}
-              />
-              <Action
-                mark="−"
-                cls="gold"
-                title="Bán nhẫn 9999"
-                desc="Theo giá mua vào tiệm"
-                onClick={() => {
-                  setSheet(false)
-                  store.setScreen('sell-gold')
-                }}
-              />
-              <Action
-                mark="C"
-                cls="coin"
-                title="Bán coin lấy USDT"
-                desc="Coin → USDT"
-                onClick={() => {
-                  setSheet(false)
-                  store.setScreen('sell-coin')
-                }}
-              />
-              <Action
-                mark="U"
-                cls="usdt"
-                title="Điều chỉnh USDT"
-                desc="Cộng / trừ hold USDT (không qua coin)"
-                onClick={() => {
-                  setSheet(false)
-                  store.setScreen('adjust-usdt')
-                }}
-              />
-              <Action
-                mark="✎"
-                cls="cash"
-                title="Cập nhật giá"
-                desc="Nhẫn 2 chiều · USDT · Coin"
-                onClick={() => {
-                  setSheet(false)
-                  store.setScreen('prices')
-                }}
-              />
-              <Action
-                mark="−"
-                cls="cash"
-                title="Ghi chi tiêu"
-                desc="Ăn uống, hóa đơn, mua sắm…"
-                onClick={() => {
-                  setSheet(false)
-                  store.setScreen('spend-form', 'expense')
-                }}
-              />
-              <Action
-                mark="+"
-                cls="cash"
-                title="Ghi thu nhập"
-                desc="Lương, thưởng, thu khác"
-                onClick={() => {
-                  setSheet(false)
-                  store.setScreen('spend-form', 'income')
-                }}
-              />
-              <Action
-                mark="S"
-                cls="savings"
-                title="Gửi tiết kiệm mới"
-                desc="Ngân hàng / kỳ hạn"
-                onClick={() => {
-                  setSheet(false)
-                  store.setScreen('savings-form')
-                }}
-              />
-              <Action
-                mark="V"
-                cls="loan"
-                title="Cho vay mới"
-                desc="Ghi khoản cho người khác vay"
-                onClick={() => {
-                  setSheet(false)
-                  store.setScreen('loan-form')
-                }}
-              />
-            </div>
-            <button className="sheet-cancel" onClick={() => setSheet(false)}>
-              Huỷ
-            </button>
-          </div>
-        </div>
       )}
 
       {store.toast && <div className="toast">{store.toast}</div>}

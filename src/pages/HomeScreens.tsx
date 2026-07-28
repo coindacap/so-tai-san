@@ -402,8 +402,8 @@ export function Home({
         <div className="empty" style={{ paddingTop: 28 }}>
           <h3>Chưa có hold</h3>
           <p>Bấm + để ghi mua nhẫn, đổi USDT hoặc mua coin.</p>
-          <button className="btn-primary" onClick={onSheet}>
-            Thêm giao dịch
+          <button type="button" className="btn-primary" onClick={onSheet}>
+            Ghi chi tiêu nhanh
           </button>
         </div>
       )}

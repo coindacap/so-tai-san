@@ -18,9 +18,23 @@ export function GoldDetail({ privacy }: { privacy: boolean }) {
   const transactions = useStore((s) => s.transactions)
   const quotes = useStore((s) => s.quotes)
   const settings = useStore((s) => s.settings)
-  const gold = assets.find((a) => a.symbol === 'NHAN9999')!
+  const gold = assets.find((a) => a.symbol === 'NHAN9999')
+  if (!gold) {
+    return (
+      <div className="scroll plain">
+        <div className="nav">
+          <button type="button" className="back" onClick={() => setScreen('home')}>
+            ‹ Tài sản
+          </button>
+        </div>
+        <div className="empty" style={{ paddingTop: 40 }}>
+          <h3>Không thấy nhẫn 9999</h3>
+        </div>
+      </div>
+    )
+  }
   const pos = computePosition(
-    { assets, transactions, quotes, settings, savings: [], loans: [], version: 1 },
+    { assets, transactions, quotes, settings },
     gold.id,
   )
   const q = quotes[gold.id]
@@ -29,7 +43,7 @@ export function GoldDetail({ privacy }: { privacy: boolean }) {
   return (
     <div className="scroll plain">
       <div className="nav">
-        <button className="back" onClick={() => setScreen('home')}>
+        <button type="button" className="back" onClick={() => setScreen('home')}>
           ‹ Tài sản
         </button>
         <div className="mid">Nhẫn 9999</div>
@@ -267,30 +281,44 @@ export function SellGold() {
   const tradeGold = useStore((s) => s.tradeGold)
   const setScreen = useStore((s) => s.setScreen)
   const showToast = useStore((s) => s.showToast)
-  const state = useStore.getState()
-  const gold = state.assets.find((a) => a.symbol === 'NHAN9999')!
-  const hold = qtyHoldAt(
-    {
-      assets: state.assets,
-      transactions: state.transactions,
-      quotes: state.quotes,
-      settings: state.settings,
-      savings: [],
-      loans: [],
-      version: 1,
-    },
-    gold.id,
-  )
-  const bid = state.quotes[gold.id]?.priceBid ?? 7_820_000
+  const assets = useStore((s) => s.assets)
+  const transactions = useStore((s) => s.transactions)
+  const quotes = useStore((s) => s.quotes)
+  const settings = useStore((s) => s.settings)
+  const gold = assets.find((a) => a.symbol === 'NHAN9999')
+  const hold = gold
+    ? qtyHoldAt({ assets, transactions, quotes, settings }, gold.id)
+    : 0
+  const bid = gold
+    ? (quotes[gold.id]?.priceBid ?? 7_820_000)
+    : 7_820_000
   const [chi, setChi] = useState('1')
   const [preset, setPreset] = useState('1')
   const [price, setPrice] = useState(String(bid))
-  const [when, setWhen] = useState(toLocalInput())
+  const [when, setWhen] = useState(() => toLocalInput())
   const [venue, setVenue] = useState('Tiệm')
   const [err, setErr] = useState('')
   const q = moneyNum(chi)
   const p = moneyNum(price)
   const total = q * p
+
+  if (!gold) {
+    return (
+      <div className="scroll plain">
+        <div className="nav">
+          <button type="button" className="back" onClick={() => setScreen('home')}>
+            ‹ Về trang chủ
+          </button>
+        </div>
+        <div className="empty" style={{ paddingTop: 40 }}>
+          <h3>Không thấy nhẫn 9999</h3>
+          <button type="button" className="btn-primary" onClick={() => setScreen('home')}>
+            Về trang chủ
+          </button>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="scroll plain">

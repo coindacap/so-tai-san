@@ -22,10 +22,7 @@ export function AssetDetail({ privacy }: { privacy: boolean }) {
   if (!id) return null
   const asset = assets.find((a) => a.id === id)
   if (!asset) return null
-  const pos = computePosition(
-    { assets, transactions, quotes, settings, savings: [], loans: [], version: 1 },
-    id,
-  )
+  const pos = computePosition({ assets, transactions, quotes, settings }, id)
   const txs = sortedTxs(transactions.filter((t) => t.assetId === id))
 
   return (
@@ -136,32 +133,45 @@ export function CashAdjust() {
   const adjustCash = useStore((s) => s.adjustCash)
   const setScreen = useStore((s) => s.setScreen)
   const showToast = useStore((s) => s.showToast)
-  const st = useStore.getState()
-  const vnd = st.assets.find((a) => a.symbol === 'VND')!
-  const hold = qtyHoldAt(
-    {
-      assets: st.assets,
-      transactions: st.transactions,
-      quotes: st.quotes,
-      settings: st.settings,
-      savings: [],
-      loans: [],
-      version: 1,
-    },
-    vnd.id,
-  )
+  const assets = useStore((s) => s.assets)
+  const transactions = useStore((s) => s.transactions)
+  const quotes = useStore((s) => s.quotes)
+  const settings = useStore((s) => s.settings)
+  const vnd = assets.find((a) => a.symbol === 'VND')
+  const hold = vnd
+    ? qtyHoldAt({ assets, transactions, quotes, settings }, vnd.id)
+    : 0
   const [side, setSide] = useState<'deposit' | 'withdraw'>('deposit')
   const [amount, setAmount] = useState('10000000')
-  const [when, setWhen] = useState(toLocalInput())
+  const [when, setWhen] = useState(() => toLocalInput())
   const [venue, setVenue] = useState('Ngân hàng / ví')
   const [note, setNote] = useState('')
   const [err, setErr] = useState('')
   const a = moneyNum(amount)
 
+  if (!vnd) {
+    return (
+      <div className="scroll plain">
+        <div className="nav">
+          <button type="button" className="back" onClick={() => setScreen('home')}>
+            ‹ Về trang chủ
+          </button>
+        </div>
+        <div className="empty" style={{ paddingTop: 40 }}>
+          <h3>Không thấy tài sản VND</h3>
+          <p>Thử Cài đặt → khôi phục / import lại sổ.</p>
+          <button type="button" className="btn-primary" onClick={() => setScreen('home')}>
+            Về trang chủ
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="scroll plain">
       <div className="nav">
-        <button className="back" onClick={() => setScreen('home')}>
+        <button type="button" className="back" onClick={() => setScreen('home')}>
           ‹ Huỷ
         </button>
         <div className="mid">Tiền mặt</div>
@@ -290,20 +300,14 @@ export function UsdtConvert() {
   const setScreen = useStore((s) => s.setScreen)
   const showToast = useStore((s) => s.showToast)
   const defaultRate = useStore((s) => s.settings.defaultUsdtVnd)
-  const st = useStore.getState()
-  const vndAsset = st.assets.find((a) => a.symbol === 'VND')!
-  const cashHold = qtyHoldAt(
-    {
-      assets: st.assets,
-      transactions: st.transactions,
-      quotes: st.quotes,
-      settings: st.settings,
-      savings: [],
-      loans: [],
-      version: 1,
-    },
-    vndAsset.id,
-  )
+  const assets = useStore((s) => s.assets)
+  const transactions = useStore((s) => s.transactions)
+  const quotes = useStore((s) => s.quotes)
+  const settings = useStore((s) => s.settings)
+  const vndAsset = assets.find((a) => a.symbol === 'VND')
+  const cashHold = vndAsset
+    ? qtyHoldAt({ assets, transactions, quotes, settings }, vndAsset.id)
+    : 0
   const [dir, setDir] = useState<'vnd_to_usdt' | 'usdt_to_vnd'>('vnd_to_usdt')
   const [qty, setQty] = useState('100')
   const [rate, setRate] = useState(String(defaultRate || 25650))
@@ -629,18 +633,7 @@ export function AdjustUsdt() {
   const showToast = useStore((s) => s.showToast)
   const usdtAsset = assets.find((a) => a.symbol === 'USDT')
   const hold = usdtAsset
-    ? qtyHoldAt(
-        {
-          assets,
-          transactions,
-          quotes,
-          settings,
-          savings: [],
-          loans: [],
-          version: 1,
-        },
-        usdtAsset.id,
-      )
+    ? qtyHoldAt({ assets, transactions, quotes, settings }, usdtAsset.id)
     : 0
   const [side, setSide] = useState<'in' | 'out'>('in')
   const [qty, setQty] = useState('')
@@ -784,10 +777,7 @@ export function SellCoin() {
   const [err, setErr] = useState('')
 
   const hold = assetId
-    ? qtyHoldAt(
-        { assets, transactions, quotes, settings, savings: [], loans: [], version: 1 },
-        assetId,
-      )
+    ? qtyHoldAt({ assets, transactions, quotes, settings }, assetId)
     : 0
 
   if (cryptos.length === 0) {
