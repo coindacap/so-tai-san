@@ -1,6 +1,9 @@
 import type {
   AppSettings,
   Asset,
+  ExpenseBudget,
+  ExpenseCategory,
+  ExpenseEntry,
   Loan,
   PriceQuote,
   SavingsAccount,
@@ -17,6 +20,9 @@ export type CloudSnapshot = {
   settings: AppSettings
   savings: SavingsAccount[]
   loans: Loan[]
+  expenseCategories?: ExpenseCategory[]
+  expenses?: ExpenseEntry[]
+  expenseBudgets?: ExpenseBudget[]
   savedAt: string
 }
 
@@ -276,12 +282,16 @@ export function snapshotRichness(s: {
   savings?: unknown[]
   loans?: unknown[]
   assets?: unknown[]
+  expenses?: unknown[]
 }): number {
   const tx = s.transactions?.length ?? 0
   const sav = s.savings?.length ?? 0
   const loan = s.loans?.length ?? 0
   const assets = s.assets?.length ?? 0
-  return tx * 10 + sav * 8 + loan * 8 + Math.max(0, assets - 3) * 2
+  const exp = s.expenses?.length ?? 0
+  return (
+    tx * 10 + sav * 8 + loan * 8 + exp * 6 + Math.max(0, assets - 3) * 2
+  )
 }
 
 export type ReconcileMode = 'login' | 'auto' | 'manual-push' | 'manual-pull'

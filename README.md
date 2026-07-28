@@ -1,6 +1,6 @@
 # Sổ Tài Sản
 
-App quản lý tài sản cá nhân: **vàng nhẫn 9999**, **USDT OTC**, **coin**, **tiết kiệm**, **cho vay**.
+App quản lý tài sản + **chi tiêu** cá nhân: **vàng nhẫn 9999**, **USDT OTC**, **coin**, **tiết kiệm**, **cho vay**, **thu/chi/ngân sách**.
 
 - Dữ liệu **local-first** (localStorage trên máy)
 - **Cloud optional** (Supabase): đăng nhập → đồng bộ nhiều máy

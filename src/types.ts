@@ -64,6 +64,66 @@ export interface AppSettings {
    * Coin + USDT vẫn auto bất kể flag này.
    */
   autoGoldPrice: boolean
+  /**
+   * Khi ghi chi tiêu: mặc định có trừ/cộng tiền mặt VND trong sổ không.
+   * Tắt = chỉ sổ chi tiêu (ví/thẻ ngoài sổ tài sản).
+   */
+  expenseLinkCashDefault: boolean
+}
+
+// ─── Chi tiêu / thu nhập ─────────────────────────────────────
+
+export type ExpenseKind = 'expense' | 'income'
+
+/** Danh mục chi / thu */
+export interface ExpenseCategory {
+  id: string
+  name: string
+  /** Emoji / 1 ký tự */
+  icon: string
+  /** CSS color hint */
+  color: string
+  kind: ExpenseKind
+  /** Danh mục hệ thống — không xóa cứng */
+  isSystem: boolean
+  archived: boolean
+  sortOrder: number
+  createdAt: string
+  updatedAt: string
+}
+
+/**
+ * Một dòng chi tiêu hoặc thu nhập.
+ * Tách khỏi Transaction (asset) — sổ chi tiêu độc lập, optional link tiền mặt.
+ */
+export interface ExpenseEntry {
+  id: string
+  kind: ExpenseKind
+  categoryId: string
+  /** Số tiền VND > 0 */
+  amount: number
+  spentAt: string
+  note?: string
+  /**
+   * true = đã trừ (chi) / cộng (thu) tiền mặt VND trong sổ tài sản.
+   * cashTxId trỏ tới Transaction adjust tương ứng.
+   */
+  linkCash: boolean
+  cashTxId?: string
+  createdAt: string
+  updatedAt: string
+}
+
+/** Ngân sách tháng theo danh mục (null categoryId = tổng chi tháng) */
+export interface ExpenseBudget {
+  id: string
+  /** YYYY-MM */
+  yearMonth: string
+  /** null = ngân sách tổng chi trong tháng */
+  categoryId: string | null
+  amount: number
+  createdAt: string
+  updatedAt: string
 }
 
 /** Sổ tiết kiệm ngân hàng / quỹ */
@@ -140,6 +200,9 @@ export interface AppState {
   settings: AppSettings
   savings: SavingsAccount[]
   loans: Loan[]
+  expenseCategories: ExpenseCategory[]
+  expenses: ExpenseEntry[]
+  expenseBudgets: ExpenseBudget[]
   version: number
 }
 
@@ -180,6 +243,11 @@ export type Screen =
   | 'loan-edit'
   | 'loan-detail'
   | 'loans-trash'
+  | 'spend'
+  | 'spend-form'
+  | 'spend-detail'
+  | 'spend-categories'
+  | 'spend-budget'
   | 'onboarding'
 
 export type NavFrame = {

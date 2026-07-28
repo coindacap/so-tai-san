@@ -52,7 +52,10 @@ export function useCloudAutoSync(enabled: boolean) {
         state.quotes !== prev.quotes ||
         state.settings !== prev.settings ||
         state.savings !== prev.savings ||
-        state.loans !== prev.loans
+        state.loans !== prev.loans ||
+        state.expenses !== prev.expenses ||
+        state.expenseCategories !== prev.expenseCategories ||
+        state.expenseBudgets !== prev.expenseBudgets
       ) {
         markCloudDirty()
         if (timer.current) clearTimeout(timer.current)

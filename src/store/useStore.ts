@@ -4,6 +4,10 @@ import type {
   AppSettings,
   AppState,
   Asset,
+  ExpenseBudget,
+  ExpenseCategory,
+  ExpenseEntry,
+  ExpenseKind,
   Loan,
   LoanInterestType,
   LoanPayment,
@@ -15,6 +19,7 @@ import type {
 } from '../types'
 import { nowIso, uid } from '../lib/format'
 import { getBySymbol, qtyHoldAt, usdtAvgCost } from '../lib/calc'
+import { seedExpenseCategories } from '../lib/expense'
 import {
   convertTaiChinhBackup,
   isTaiChinhBackup,
@@ -104,19 +109,22 @@ const defaultSettings: AppSettings = {
   defaultUsdtVnd: 25_650,
   hasOnboarded: false,
   autoGoldPrice: false,
+  expenseLinkCashDefault: false,
 }
 
 function hasAnyData(s: {
   transactions: unknown[]
   savings: unknown[]
   loans: unknown[]
+  expenses?: unknown[]
   settings?: AppSettings
 }): boolean {
   return (
     !!s.settings?.hasOnboarded ||
     s.transactions.length > 0 ||
     s.savings.length > 0 ||
-    s.loans.length > 0
+    s.loans.length > 0 ||
+    (s.expenses?.length ?? 0) > 0
   )
 }
 
@@ -341,6 +349,9 @@ interface Actions {
     settings: AppSettings
     savings: SavingsAccount[]
     loans: Loan[]
+    expenseCategories: ExpenseCategory[]
+    expenses: ExpenseEntry[]
+    expenseBudgets: ExpenseBudget[]
     savedAt: string
   }
   /** Áp snapshot từ cloud (ghi đè data, giữ localStorage sync) */
@@ -352,6 +363,9 @@ interface Actions {
     settings?: Partial<AppSettings>
     savings?: SavingsAccount[]
     loans?: Loan[]
+    expenseCategories?: ExpenseCategory[]
+    expenses?: ExpenseEntry[]
+    expenseBudgets?: ExpenseBudget[]
   }) => void
   /** Chụp bản an toàn (trước ghi đè). reason: import | cloud-pull | reset | manual */
   saveSafetyBackup: (reason: SafetyReason) => string | null
@@ -360,17 +374,60 @@ interface Actions {
     id: string,
   ) => { ok: true; message: string } | { ok: false; error: string }
   resetAll: () => void
+
+  // ── Chi tiêu ──
+  addExpense: (input: {
+    kind: ExpenseKind
+    categoryId: string
+    amount: number
+    spentAt: string
+    note?: string
+    linkCash?: boolean
+  }) => { ok: true; id: string } | { ok: false; error: string }
+  updateExpense: (
+    id: string,
+    patch: Partial<
+      Pick<
+        ExpenseEntry,
+        'kind' | 'categoryId' | 'amount' | 'spentAt' | 'note' | 'linkCash'
+      >
+    >,
+  ) => { ok: true } | { ok: false; error: string }
+  deleteExpense: (id: string) => { ok: true } | { ok: false; error: string }
+  addExpenseCategory: (input: {
+    name: string
+    icon: string
+    color: string
+    kind: ExpenseKind
+  }) => { ok: true; id: string } | { ok: false; error: string }
+  updateExpenseCategory: (
+    id: string,
+    patch: Partial<
+      Pick<ExpenseCategory, 'name' | 'icon' | 'color' | 'archived' | 'sortOrder'>
+    >,
+  ) => { ok: true } | { ok: false; error: string }
+  setExpenseBudget: (input: {
+    yearMonth: string
+    categoryId: string | null
+    amount: number
+  }) => { ok: true } | { ok: false; error: string }
+  clearExpenseBudget: (
+    yearMonth: string,
+    categoryId: string | null,
+  ) => void
 }
 
 function snapshotCounts(s: {
   transactions: unknown[]
   savings: unknown[]
   loans: unknown[]
+  expenses?: unknown[]
 }) {
   return {
     tx: s.transactions.length,
     savings: s.savings.length,
     loans: s.loans.length,
+    expenses: s.expenses?.length ?? 0,
   }
 }
 
@@ -413,13 +470,16 @@ function resolvePairIds(txs: Transaction[], id: string): string[] {
 export const useStore = create<Store>()(
   persist(
     (set, get) => ({
-      version: 2,
+      version: 3,
       assets: seedAssets(),
       transactions: [],
       quotes: seedQuotes(),
       settings: defaultSettings,
       savings: [],
       loans: [],
+      expenseCategories: seedExpenseCategories(),
+      expenses: [],
+      expenseBudgets: [],
       // Mặc định home — onboarding chỉ khi chưa có data sau hydrate
       screen: 'home',
       detailAssetId: null,
@@ -435,6 +495,7 @@ export const useStore = create<Store>()(
 
         const mainTabs = new Set([
           'home',
+          'spend',
           'savings',
           'loans',
           'settings',
@@ -476,6 +537,14 @@ export const useStore = create<Store>()(
             cur.screen === 'savings-form'
           ) {
             set({ screen: 'savings', detailAssetId: null })
+            went = true
+          } else if (
+            cur.screen === 'spend-form' ||
+            cur.screen === 'spend-detail' ||
+            cur.screen === 'spend-categories' ||
+            cur.screen === 'spend-budget'
+          ) {
+            set({ screen: 'spend', detailAssetId: null })
             went = true
           } else if (
             cur.screen === 'gold' ||
@@ -1526,6 +1595,9 @@ export const useStore = create<Store>()(
             settings: s.settings,
             savings: s.savings,
             loans: s.loans,
+            expenseCategories: s.expenseCategories,
+            expenses: s.expenses,
+            expenseBudgets: s.expenseBudgets,
             exportedAt: nowIso(),
           },
           null,
@@ -1543,6 +1615,9 @@ export const useStore = create<Store>()(
           settings: s.settings,
           savings: s.savings,
           loans: s.loans,
+          expenseCategories: s.expenseCategories,
+          expenses: s.expenses,
+          expenseBudgets: s.expenseBudgets,
           savedAt: nowIso(),
         }
       },
@@ -1570,13 +1645,18 @@ export const useStore = create<Store>()(
           hasOnboarded: true,
         }
         set({
-          version: data.version ?? 2,
+          version: data.version ?? 3,
           assets: data.assets?.length ? data.assets : seedAssets(),
           transactions: data.transactions ?? [],
           quotes: data.quotes ?? seedQuotes(),
           settings,
           savings: data.savings ?? [],
           loans,
+          expenseCategories: data.expenseCategories?.length
+            ? data.expenseCategories
+            : seedExpenseCategories(),
+          expenses: data.expenses ?? [],
+          expenseBudgets: data.expenseBudgets ?? [],
           screen: 'home',
           detailAssetId: null,
           navStack: [],
@@ -1631,6 +1711,9 @@ export const useStore = create<Store>()(
               },
               savings: state.savings,
               loans: state.loans,
+              expenseCategories: seedExpenseCategories(),
+              expenses: [],
+              expenseBudgets: [],
               screen: 'home',
               detailAssetId: null,
             })
@@ -1650,6 +1733,7 @@ export const useStore = create<Store>()(
               ...(data.settings as object),
               hasOnboarded: true,
             }
+            const cats = data.expenseCategories as ExpenseCategory[] | undefined
             set({
               assets: data.assets as AppState['assets'],
               transactions: (data.transactions as AppState['transactions']) || [],
@@ -1657,7 +1741,12 @@ export const useStore = create<Store>()(
               settings,
               savings: (data.savings as AppState['savings']) || [],
               loans: (data.loans as AppState['loans']) || [],
-              version: (data.version as number) || 2,
+              expenseCategories:
+                cats?.length ? cats : seedExpenseCategories(),
+              expenses: (data.expenses as AppState['expenses']) || [],
+              expenseBudgets:
+                (data.expenseBudgets as AppState['expenseBudgets']) || [],
+              version: (data.version as number) || 3,
               screen: 'home',
               detailAssetId: null,
             })
@@ -1681,6 +1770,210 @@ export const useStore = create<Store>()(
         }
       },
 
+      addExpense: (input) => {
+        const amount = input.amount
+        if (!(amount > 0)) return { ok: false, error: 'Số tiền phải > 0' }
+        const cats = get().expenseCategories
+        const cat = cats.find((c) => c.id === input.categoryId && !c.archived)
+        if (!cat) return { ok: false, error: 'Chọn danh mục' }
+        if (cat.kind !== input.kind)
+          return { ok: false, error: 'Danh mục không khớp loại thu/chi' }
+
+        const linkCash =
+          input.linkCash ?? get().settings.expenseLinkCashDefault
+        const t = nowIso()
+        let cashTxId: string | undefined
+        let assetTxs = get().transactions
+
+        if (linkCash) {
+          const vnd = getBySymbol(get(), 'VND')!
+          if (input.kind === 'expense') {
+            const hold = qtyHoldAt(get(), vnd.id)
+            if (hold < amount)
+              return {
+                ok: false,
+                error: `Không đủ tiền mặt (còn ${Math.round(hold).toLocaleString('vi-VN')}đ). Tắt “trừ tiền mặt” hoặc nạp VND.`,
+              }
+          }
+          cashTxId = uid()
+          const cashTx: Transaction = {
+            id: cashTxId,
+            kind: 'adjust',
+            assetId: vnd.id,
+            side: input.kind === 'expense' ? 'out' : 'in',
+            qty: amount,
+            pricePerUnit: 1,
+            priceCurrency: 'VND',
+            fee: 0,
+            counterAssetId: vnd.id,
+            counterQty: 0,
+            tradedAt: input.spentAt,
+            note:
+              input.note ||
+              (input.kind === 'expense'
+                ? `Chi tiêu · ${cat.name}`
+                : `Thu nhập · ${cat.name}`),
+            createdAt: t,
+            updatedAt: t,
+          }
+          assetTxs = [...assetTxs, cashTx]
+        }
+
+        const entry: ExpenseEntry = {
+          id: uid(),
+          kind: input.kind,
+          categoryId: input.categoryId,
+          amount,
+          spentAt: input.spentAt,
+          note: input.note?.trim() || undefined,
+          linkCash,
+          cashTxId,
+          createdAt: t,
+          updatedAt: t,
+        }
+        set({
+          expenses: [entry, ...get().expenses],
+          transactions: assetTxs,
+        })
+        return { ok: true, id: entry.id }
+      },
+
+      updateExpense: (id, patch) => {
+        const cur = get().expenses.find((e) => e.id === id)
+        if (!cur) return { ok: false, error: 'Không tìm thấy' }
+        // Đơn giản: không đổi linkCash / amount khi đã link cash (tránh lệch sổ)
+        if (
+          cur.linkCash &&
+          (patch.amount != null ||
+            patch.linkCash != null ||
+            patch.kind != null)
+        ) {
+          return {
+            ok: false,
+            error:
+              'Giao dịch đã gắn tiền mặt — xóa rồi tạo lại nếu cần đổi số/loại',
+          }
+        }
+        const t = nowIso()
+        set((s) => ({
+          expenses: s.expenses.map((e) =>
+            e.id === id
+              ? {
+                  ...e,
+                  ...patch,
+                  note:
+                    patch.note !== undefined
+                      ? patch.note.trim() || undefined
+                      : e.note,
+                  updatedAt: t,
+                }
+              : e,
+          ),
+        }))
+        return { ok: true }
+      },
+
+      deleteExpense: (id) => {
+        const cur = get().expenses.find((e) => e.id === id)
+        if (!cur) return { ok: false, error: 'Không tìm thấy' }
+        set((s) => ({
+          expenses: s.expenses.filter((e) => e.id !== id),
+          transactions: cur.cashTxId
+            ? s.transactions.filter((tx) => tx.id !== cur.cashTxId)
+            : s.transactions,
+        }))
+        return { ok: true }
+      },
+
+      addExpenseCategory: (input) => {
+        const name = input.name.trim()
+        if (!name) return { ok: false, error: 'Nhập tên danh mục' }
+        const t = nowIso()
+        const id = uid()
+        const maxSort = get()
+          .expenseCategories.filter((c) => c.kind === input.kind)
+          .reduce((m, c) => Math.max(m, c.sortOrder), 0)
+        const cat: ExpenseCategory = {
+          id,
+          name,
+          icon: input.icon || (input.kind === 'income' ? '💰' : '🏷'),
+          color: input.color || '#8e8e93',
+          kind: input.kind,
+          isSystem: false,
+          archived: false,
+          sortOrder: maxSort + 1,
+          createdAt: t,
+          updatedAt: t,
+        }
+        set((s) => ({
+          expenseCategories: [...s.expenseCategories, cat],
+        }))
+        return { ok: true, id }
+      },
+
+      updateExpenseCategory: (id, patch) => {
+        const cur = get().expenseCategories.find((c) => c.id === id)
+        if (!cur) return { ok: false, error: 'Không tìm thấy danh mục' }
+        const t = nowIso()
+        set((s) => ({
+          expenseCategories: s.expenseCategories.map((c) =>
+            c.id === id ? { ...c, ...patch, updatedAt: t } : c,
+          ),
+        }))
+        return { ok: true }
+      },
+
+      setExpenseBudget: (input) => {
+        if (!(input.amount >= 0))
+          return { ok: false, error: 'Ngân sách không hợp lệ' }
+        if (!/^\d{4}-\d{2}$/.test(input.yearMonth))
+          return { ok: false, error: 'Tháng không hợp lệ' }
+        const t = nowIso()
+        const existing = get().expenseBudgets.find(
+          (b) =>
+            b.yearMonth === input.yearMonth &&
+            (input.categoryId == null
+              ? b.categoryId == null
+              : b.categoryId === input.categoryId),
+        )
+        if (existing) {
+          set((s) => ({
+            expenseBudgets: s.expenseBudgets.map((b) =>
+              b.id === existing.id
+                ? { ...b, amount: input.amount, updatedAt: t }
+                : b,
+            ),
+          }))
+        } else {
+          const row: ExpenseBudget = {
+            id: uid(),
+            yearMonth: input.yearMonth,
+            categoryId: input.categoryId,
+            amount: input.amount,
+            createdAt: t,
+            updatedAt: t,
+          }
+          set((s) => ({
+            expenseBudgets: [...s.expenseBudgets, row],
+          }))
+        }
+        return { ok: true }
+      },
+
+      clearExpenseBudget: (yearMonth, categoryId) => {
+        set((s) => ({
+          expenseBudgets: s.expenseBudgets.filter(
+            (b) =>
+              !(
+                b.yearMonth === yearMonth &&
+                (categoryId == null
+                  ? b.categoryId == null
+                  : b.categoryId === categoryId)
+              ),
+          ),
+        }))
+      },
+
       resetAll: () => {
         const cur = get()
         if (hasAnyData(cur)) {
@@ -1693,6 +1986,9 @@ export const useStore = create<Store>()(
           settings: { ...defaultSettings, hasOnboarded: false },
           savings: [],
           loans: [],
+          expenseCategories: seedExpenseCategories(),
+          expenses: [],
+          expenseBudgets: [],
           screen: 'onboarding',
           detailAssetId: null,
         })
@@ -1708,6 +2004,9 @@ export const useStore = create<Store>()(
         settings: s.settings,
         savings: s.savings,
         loans: s.loans,
+        expenseCategories: s.expenseCategories,
+        expenses: s.expenses,
+        expenseBudgets: s.expenseBudgets,
       }),
       merge: (persisted, current) => {
         const p = (persisted || {}) as Partial<
@@ -1720,18 +2019,23 @@ export const useStore = create<Store>()(
             | 'settings'
             | 'savings'
             | 'loans'
+            | 'expenseCategories'
+            | 'expenses'
+            | 'expenseBudgets'
           >
         >
         const settings = {
           ...defaultSettings,
           ...p.settings,
           autoGoldPrice: p.settings?.autoGoldPrice ?? false,
+          expenseLinkCashDefault: p.settings?.expenseLinkCashDefault ?? false,
           hasOnboarded:
             p.settings?.hasOnboarded ||
             hasAnyData({
               transactions: p.transactions || [],
               savings: p.savings || [],
               loans: p.loans || [],
+              expenses: p.expenses || [],
               settings: p.settings,
             }),
         }
@@ -1743,6 +2047,10 @@ export const useStore = create<Store>()(
           interestType: l.interestType ?? ('annual' as const),
           interestValue: l.interestValue ?? l.rateAnnual ?? 0,
         }))
+        const expenseCategories =
+          p.expenseCategories?.length
+            ? p.expenseCategories
+            : seedExpenseCategories()
         const merged = {
           ...current,
           version: p.version ?? current.version,
@@ -1752,6 +2060,9 @@ export const useStore = create<Store>()(
           settings,
           savings: p.savings ?? [],
           loans,
+          expenseCategories,
+          expenses: p.expenses ?? [],
+          expenseBudgets: p.expenseBudgets ?? [],
           navStack: [],
         }
         merged.screen = hasAnyData(merged) ? 'home' : 'onboarding'

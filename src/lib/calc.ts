@@ -6,11 +6,18 @@ import type {
   Transaction,
 } from '../types'
 
-export function getAsset(state: AppState, id: string): Asset | undefined {
+/** Đủ field để tính hold / P&L; field khác (savings, expenses…) optional */
+export type CalcState = Pick<
+  AppState,
+  'assets' | 'transactions' | 'quotes' | 'settings'
+> &
+  Partial<Omit<AppState, 'assets' | 'transactions' | 'quotes' | 'settings'>>
+
+export function getAsset(state: CalcState, id: string): Asset | undefined {
   return state.assets.find((a) => a.id === id)
 }
 
-export function getBySymbol(state: AppState, symbol: string): Asset | undefined {
+export function getBySymbol(state: CalcState, symbol: string): Asset | undefined {
   return state.assets.find((a) => a.symbol === symbol)
 }
 
@@ -22,7 +29,7 @@ export function sortedTxs(txs: Transaction[]): Transaction[] {
   })
 }
 
-export function usdtRate(state: AppState): number {
+export function usdtRate(state: CalcState): number {
   const usdt = getBySymbol(state, 'USDT')
   if (!usdt) return state.settings.defaultUsdtVnd
   const q = state.quotes[usdt.id]
@@ -36,7 +43,7 @@ function markPrice(asset: Asset, quote?: PriceQuote): number | null {
   return quote.price ?? null
 }
 
-export function computePosition(state: AppState, assetId: string): PositionView {
+export function computePosition(state: CalcState, assetId: string): PositionView {
   const asset = getAsset(state, assetId)!
   const txs = sortedTxs(state.transactions.filter((t) => t.assetId === assetId))
   const quote = state.quotes[assetId]
@@ -139,7 +146,7 @@ export function computePosition(state: AppState, assetId: string): PositionView 
 }
 
 export function qtyHoldAt(
-  state: AppState,
+  state: CalcState,
   assetId: string,
   beforeIso?: string,
 ): number {
@@ -153,14 +160,14 @@ export function qtyHoldAt(
   return qty
 }
 
-export function usdtAvgCost(state: AppState): number {
+export function usdtAvgCost(state: CalcState): number {
   const usdt = getBySymbol(state, 'USDT')
   if (!usdt) return state.settings.defaultUsdtVnd
   const pos = computePosition(state, usdt.id)
   return pos.avgCost ?? state.settings.defaultUsdtVnd
 }
 
-export function portfolioSummary(state: AppState) {
+export function portfolioSummary(state: CalcState) {
   const active = state.assets.filter((a) => !a.isArchived)
   const positions = active.map((a) => computePosition(state, a.id))
 

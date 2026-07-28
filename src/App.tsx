@@ -75,6 +75,23 @@ const LoanDetail = lazy(() =>
 const LoansTrash = lazy(() =>
   import('./pages/LoansScreens').then((m) => ({ default: m.LoansTrash })),
 )
+const SpendHome = lazy(() =>
+  import('./pages/ExpenseScreens').then((m) => ({ default: m.SpendHome })),
+)
+const SpendForm = lazy(() =>
+  import('./pages/ExpenseScreens').then((m) => ({ default: m.SpendForm })),
+)
+const SpendDetail = lazy(() =>
+  import('./pages/ExpenseScreens').then((m) => ({ default: m.SpendDetail })),
+)
+const SpendCategories = lazy(() =>
+  import('./pages/ExpenseScreens').then((m) => ({
+    default: m.SpendCategories,
+  })),
+)
+const SpendBudget = lazy(() =>
+  import('./pages/ExpenseScreens').then((m) => ({ default: m.SpendBudget })),
+)
 
 function ScreenFallback() {
   return (
@@ -169,6 +186,7 @@ export default function App() {
     'assets',
     'history',
     'settings',
+    'spend',
     'savings',
     'loans',
   ].includes(store.screen)
@@ -407,6 +425,13 @@ export default function App() {
         )}
         {store.screen === 'loan-detail' && <LoanDetail privacy={privacy} />}
         {store.screen === 'loans-trash' && <LoansTrash privacy={privacy} />}
+        {store.screen === 'spend' && <SpendHome privacy={privacy} />}
+        {store.screen === 'spend-form' && <SpendForm />}
+        {store.screen === 'spend-detail' && (
+          <SpendDetail privacy={privacy} />
+        )}
+        {store.screen === 'spend-categories' && <SpendCategories />}
+        {store.screen === 'spend-budget' && <SpendBudget />}
       </Suspense>
 
       {showTabs && (
@@ -415,7 +440,7 @@ export default function App() {
           aria-hidden={!chromeVisible}
         >
           <Tab id="home" label="Tài sản" ico="◆" />
-          <Tab id="savings" label="Tiết kiệm" ico="▣" />
+          <Tab id="spend" label="Chi tiêu" ico="◈" />
           <button className="fab" onClick={() => setSheet(true)} aria-label="Thêm">
             +
           </button>
@@ -508,6 +533,26 @@ export default function App() {
                 onClick={() => {
                   setSheet(false)
                   store.setScreen('prices')
+                }}
+              />
+              <Action
+                mark="−"
+                cls="cash"
+                title="Ghi chi tiêu"
+                desc="Ăn uống, hóa đơn, mua sắm…"
+                onClick={() => {
+                  setSheet(false)
+                  store.setScreen('spend-form', 'expense')
+                }}
+              />
+              <Action
+                mark="+"
+                cls="cash"
+                title="Ghi thu nhập"
+                desc="Lương, thưởng, thu khác"
+                onClick={() => {
+                  setSheet(false)
+                  store.setScreen('spend-form', 'income')
                 }}
               />
               <Action

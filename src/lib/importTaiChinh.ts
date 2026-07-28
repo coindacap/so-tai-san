@@ -489,6 +489,7 @@ export function convertTaiChinhBackup(raw: unknown): {
     defaultUsdtVnd: lastUsdtRate,
     hasOnboarded: true,
     autoGoldPrice: false,
+    expenseLinkCashDefault: false,
   }
 
   report.notes.push(
@@ -505,13 +506,16 @@ export function convertTaiChinhBackup(raw: unknown): {
 
   return {
     state: {
-      version: 2,
+      version: 3,
       assets,
       transactions,
       quotes,
       settings,
       savings,
       loans,
+      expenseCategories: [],
+      expenses: [],
+      expenseBudgets: [],
     },
     report,
   }
