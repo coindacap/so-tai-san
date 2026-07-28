@@ -1000,14 +1000,91 @@ select {
   transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
   box-shadow: 0 -6px 20px rgba(0, 0, 0, 0.06);
 }
-/* 3 tab: Chi tiêu | Cho vay | Tài sản — không FAB */
+/* 4 tab đều: Chi tiêu | Cho vay | Tài sản | Cài đặt */
+.tabbar.tabbar-4 {
+  grid-template-columns: 1fr 1fr 1fr 1fr;
+  align-items: center;
+  padding-top: 10px;
+}
 .tabbar.tabbar-3 {
   grid-template-columns: 1fr 1fr 1fr;
   align-items: center;
   padding-top: 10px;
 }
-.spend-quick {
-  grid-template-columns: repeat(3, 1fr) !important;
+
+/* CTA Ghi chi giữa trang Chi tiêu */
+.spend-hero-center {
+  text-align: center;
+}
+.spend-hero-center .v {
+  font-size: 32px !important;
+  font-weight: 780;
+  letter-spacing: -0.03em;
+}
+.spend-cta-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+  margin: 14px 0 18px;
+}
+.spend-cta-main {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 112px;
+  padding: 20px 16px;
+  border: none;
+  border-radius: 22px;
+  background: linear-gradient(160deg, #e23d56 0%, var(--brand, #c41e3a) 55%, #9b1830 100%);
+  color: #fff;
+  box-shadow: 0 14px 32px rgba(196, 30, 58, 0.32);
+  font: inherit;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.spend-cta-main:active {
+  transform: scale(0.97);
+  box-shadow: 0 8px 18px rgba(196, 30, 58, 0.28);
+}
+.spend-cta-ico {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.2);
+  display: grid;
+  place-items: center;
+  font-size: 28px;
+  font-weight: 500;
+  line-height: 1;
+}
+.spend-cta-title {
+  font-size: 22px;
+  font-weight: 780;
+  letter-spacing: -0.03em;
+}
+.spend-cta-sub {
+  font-size: 13px;
+  font-weight: 600;
+  opacity: 0.88;
+}
+.spend-cta-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.spend-cta-row button {
+  padding: 12px 10px;
+  border-radius: 14px;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  background: var(--card);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--ink-2, inherit);
 }
 /* Ẩn tạm khi kéo xuống — kéo lên nhẹ là hiện lại */
 .tabbar.is-away {

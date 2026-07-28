@@ -47,22 +47,22 @@ export function SpendHome({ privacy }: { privacy: boolean }) {
     <div className="scroll">
       <div className="large-title" style={{ paddingTop: 8 }}>
         <h1>Chi tiêu</h1>
-        <div className="sub">Theo dõi chi · ngân sách tháng</div>
+        <div className="sub">{monthLabel(ym)}</div>
       </div>
 
       <div className="spend-month-nav">
         <button type="button" className="icon-btn" onClick={() => setYm(shiftMonth(ym, -1))}>
           ‹
         </button>
-        <div className="spend-month-label">{monthLabel(ym)}</div>
+        <div className="spend-month-label">Đã chi</div>
         <button type="button" className="icon-btn" onClick={() => setYm(shiftMonth(ym, 1))}>
           ›
         </button>
       </div>
 
-      <div className="spend-hero">
-        <div className="k">Đã chi tháng này</div>
-        <div className="v num down" style={{ fontSize: 28, marginTop: 4 }}>
+      <div className="spend-hero spend-hero-center">
+        <div className="k">Tháng này</div>
+        <div className="v num down">
           {mask(privacy, fmtVnd(sum.expense))}
           <small>đ</small>
         </div>
@@ -70,7 +70,7 @@ export function SpendHome({ privacy }: { privacy: boolean }) {
           <div className="spend-budget-bar-wrap">
             <div className="spend-budget-meta">
               <span>
-                Ngân sách {mask(privacy, fmtVnd(sum.totalBudget))}
+                NS {mask(privacy, fmtVnd(sum.totalBudget))}
               </span>
               <span className={overBudget ? 'down' : ''}>
                 {overBudget
@@ -90,28 +90,34 @@ export function SpendHome({ privacy }: { privacy: boolean }) {
         )}
       </div>
 
-      <div className="quick spend-quick" style={{ marginBottom: 8 }}>
-        <button type="button" onClick={() => setScreen('spend-form')}>
-          <div className="qico" style={{ background: '#FFE5E8', color: '#C41E3A' }}>−</div>
-          <span>Ghi chi</span>
+      {/* CTA giữa — ghi chi ngay */}
+      <div className="spend-cta-wrap">
+        <button
+          type="button"
+          className="spend-cta-main"
+          onClick={() => setScreen('spend-form')}
+        >
+          <span className="spend-cta-ico">−</span>
+          <span className="spend-cta-title">Ghi chi</span>
+          <span className="spend-cta-sub">Chạm để thêm khoản chi ngay</span>
         </button>
-        <button type="button" onClick={() => setScreen('spend-budget')}>
-          <div className="qico" style={{ background: '#E8E0FF', color: '#5E5CE6' }}>▦</div>
-          <span>Ngân sách</span>
-        </button>
-        <button type="button" onClick={() => setScreen('spend-categories')}>
-          <div className="qico" style={{ background: '#ECECEE', color: '#3A3A40' }}>☰</div>
-          <span>Danh mục</span>
-        </button>
+        <div className="spend-cta-row">
+          <button type="button" onClick={() => setScreen('spend-budget')}>
+            Ngân sách
+          </button>
+          <button type="button" onClick={() => setScreen('spend-categories')}>
+            Danh mục
+          </button>
+        </div>
       </div>
 
       <div className="sec">
         <h2>Theo danh mục</h2>
       </div>
       {sum.byCat.length === 0 ? (
-        <div className="empty" style={{ paddingTop: 20 }}>
+        <div className="empty" style={{ paddingTop: 12 }}>
           <h3>Chưa có chi tiêu</h3>
-          <p>Bấm “Ghi chi” để thêm khoản đầu tiên trong tháng.</p>
+          <p>Bấm nút lớn “Ghi chi” ở giữa để thêm.</p>
         </div>
       ) : (
         <div className="group">
@@ -143,7 +149,7 @@ export function SpendHome({ privacy }: { privacy: boolean }) {
       <div className="sec">
         <h2>Gần đây</h2>
         <button type="button" onClick={() => setScreen('spend-form')}>
-          Thêm
+          Ghi chi
         </button>
       </div>
       <div className="group">
