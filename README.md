@@ -115,6 +115,7 @@ Cài đặt → **Export JSON** (vẫn nên làm định kỳ, song song cloud).
 
 ## Tính năng gần đây
 
+- **Chi tiêu**: tab Chi tiêu — thu/chi, danh mục, ngân sách tháng, gắn tiền mặt VND, sync cloud
 - Code-split theo màn hình (bundle nhẹ hơn, lazy load)
 - **Cần chú ý**: nhắc đáo hạn tiết kiệm / hạn cho vay (≤ 30 ngày)
 - **NAV sparkline** trên Home (lưu theo ngày trên máy, tối đa 90 ngày)
