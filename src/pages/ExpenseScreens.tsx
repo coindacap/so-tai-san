@@ -471,33 +471,115 @@ export function SpendDetail({ privacy }: { privacy: boolean }) {
   )
 }
 
+/** Icon sẵn chọn nhanh khi tạo / sửa danh mục */
+const CATEGORY_ICONS = [
+  '🍜', '☕', '🍔', '🥗', '🍺', '🛒',
+  '🚗', '🛵', '⛽', '🚌', '✈️', '🚇',
+  '🏠', '💡', '💧', '📡', '🔑', '🛏',
+  '🛍', '👕', '📱', '💻', '🎁', '📦',
+  '💊', '🏥', '🏋', '🎮', '🎬', '🎵',
+  '📚', '✏️', '💼', '👶', '🐶', '💄',
+  '💇', '🧾', '📄', '🏦', '💳', '🪙',
+  '🔧', '🧹', '🌳', '🎉', '❤️', '⋯',
+]
+
+const CATEGORY_COLORS = [
+  '#ff9f0a',
+  '#ff375f',
+  '#bf5af2',
+  '#5e5ce6',
+  '#0a84ff',
+  '#64d2ff',
+  '#30d158',
+  '#ac8e68',
+  '#ff6482',
+  '#8e8e93',
+  '#c41e3a',
+  '#ffd60a',
+]
+
 export function SpendCategories() {
   const setScreen = useStore((s) => s.setScreen)
   const showToast = useStore((s) => s.showToast)
   const categories = useStore((s) => s.expenseCategories)
   const addExpenseCategory = useStore((s) => s.addExpenseCategory)
   const updateExpenseCategory = useStore((s) => s.updateExpenseCategory)
-  const [name, setName] = useState('')
-  const [icon, setIcon] = useState('🏷')
 
   const list = categories
     .filter((c) => c.kind === 'expense' && !c.archived)
     .sort((a, b) => a.sortOrder - b.sortOrder)
 
+  /** null = tạo mới; string = id đang sửa */
+  const [editId, setEditId] = useState<string | null>(null)
+  const [name, setName] = useState('')
+  const [icon, setIcon] = useState('🏷')
+  const [color, setColor] = useState(CATEGORY_COLORS[0]!)
+  const editing = editId != null
+  const editCat = editId ? list.find((c) => c.id === editId) : null
+
+  function openCreate() {
+    setEditId(null)
+    setName('')
+    setIcon('🏷')
+    setColor(CATEGORY_COLORS[0]!)
+  }
+
+  function openEdit(id: string) {
+    const c = list.find((x) => x.id === id)
+    if (!c) return
+    setEditId(id)
+    setName(c.name)
+    setIcon(c.icon)
+    setColor(c.color || CATEGORY_COLORS[0]!)
+  }
+
+  function save() {
+    if (editing && editId) {
+      const res = updateExpenseCategory(editId, {
+        name: name.trim(),
+        icon: icon || '🏷',
+        color,
+      })
+      if (!res.ok) showToast(res.error)
+      else {
+        showToast('Đã cập nhật danh mục')
+        openCreate()
+      }
+      return
+    }
+    const res = addExpenseCategory({
+      name,
+      icon: icon || '🏷',
+      color,
+      kind: 'expense',
+    })
+    if (!res.ok) showToast(res.error)
+    else {
+      showToast('Đã thêm danh mục')
+      openCreate()
+    }
+  }
+
   return (
     <div className="scroll">
       <div className="nav">
         <button type="button" className="back" onClick={() => setScreen('spend')}>
-          ‹ Chi tiêu
+          ‹ Báo cáo
         </button>
       </div>
       <div className="large-title">
         <h1>Danh mục chi</h1>
+        <div className="sub">Chạm dòng để sửa · chọn icon bên dưới</div>
       </div>
 
       <div className="group">
         {list.map((c) => (
-          <div key={c.id} className="row" style={{ cursor: 'default' }}>
+          <button
+            key={c.id}
+            type="button"
+            className={`row ${editId === c.id ? 'cat-row-on' : ''}`}
+            onClick={() => openEdit(c.id)}
+          >
             <div
               className="mark"
               style={{ background: `${c.color}22`, color: c.color }}
@@ -506,58 +588,90 @@ export function SpendCategories() {
             </div>
             <div className="body">
               <div className="t">{c.name}</div>
-              <div className="d">{c.isSystem ? 'Hệ thống' : 'Tự tạo'}</div>
+              <div className="d">{c.isSystem ? 'Mặc định' : 'Tự tạo'}</div>
             </div>
-            {!c.isSystem && (
-              <button
-                type="button"
-                className="link-btn"
-                onClick={() => {
-                  updateExpenseCategory(c.id, { archived: true })
-                  showToast('Đã ẩn danh mục')
-                }}
-              >
-                Ẩn
-              </button>
-            )}
-          </div>
+            <span className="link-btn">Sửa</span>
+            <span className="chev">›</span>
+          </button>
         ))}
       </div>
 
       <div className="sec">
-        <h2>Thêm danh mục</h2>
+        <h2>{editing ? `Sửa · ${editCat?.name || ''}` : 'Thêm danh mục'}</h2>
+        {editing && (
+          <button type="button" className="link-btn" onClick={openCreate}>
+            Tạo mới
+          </button>
+        )}
       </div>
-      <div className="field">
-        <label>Icon (emoji)</label>
-        <input value={icon} onChange={(e) => setIcon(e.target.value)} maxLength={4} />
-      </div>
+
       <div className="field">
         <label>Tên</label>
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
-          placeholder="VD: Cà phê"
+          placeholder="VD: Cà phê, Tiền chợ…"
         />
       </div>
-      <button
-        className="btn-primary"
-        type="button"
-        onClick={() => {
-          const res = addExpenseCategory({
-            name,
-            icon: icon || '🏷',
-            color: '#ff9f0a',
-            kind: 'expense',
-          })
-          if (!res.ok) showToast(res.error)
-          else {
-            showToast('Đã thêm danh mục')
-            setName('')
-          }
-        }}
-      >
-        Thêm
+
+      <div className="field">
+        <label>Chọn icon</label>
+        <div className="icon-picker">
+          {CATEGORY_ICONS.map((ic) => (
+            <button
+              key={ic}
+              type="button"
+              className={`icon-pick ${icon === ic ? 'on' : ''}`}
+              onClick={() => setIcon(ic)}
+            >
+              {ic}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="field">
+        <label>Màu</label>
+        <div className="color-picker">
+          {CATEGORY_COLORS.map((col) => (
+            <button
+              key={col}
+              type="button"
+              className={`color-pick ${color === col ? 'on' : ''}`}
+              style={{ background: col }}
+              onClick={() => setColor(col)}
+              aria-label={col}
+            />
+          ))}
+        </div>
+      </div>
+
+      <div className="cat-preview">
+        <div className="mark" style={{ background: `${color}22`, color }}>
+          {icon}
+        </div>
+        <span>{name.trim() || 'Tên danh mục'}</span>
+      </div>
+
+      <button className="btn-primary" type="button" onClick={save}>
+        {editing ? 'Lưu thay đổi' : 'Thêm danh mục'}
       </button>
+
+      {editing && editCat && !editCat.isSystem && (
+        <button
+          className="btn-secondary"
+          type="button"
+          style={{ marginTop: 10, color: 'var(--down)' }}
+          onClick={() => {
+            if (!window.confirm('Ẩn danh mục này?')) return
+            updateExpenseCategory(editId!, { archived: true })
+            showToast('Đã ẩn danh mục')
+            openCreate()
+          }}
+        >
+          Ẩn danh mục này
+        </button>
+      )}
     </div>
   )
 }

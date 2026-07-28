@@ -446,12 +446,12 @@ export default function App() {
 
       {showTabs && (
         <nav
-          className={`tabbar tabbar-4${chromeVisible ? '' : ' is-away'}`}
+          className={`tabbar tabbar-5${chromeVisible ? '' : ' is-away'}`}
           aria-hidden={!chromeVisible}
         >
-          {/* Chi tiêu trước · Tài sản / Cài đặt sau (đều nhau) */}
           <Tab id="spend" label="Chi tiêu" ico="◈" />
           <Tab id="loans" label="Cho vay" ico="◎" />
+          <Tab id="savings" label="Tiết kiệm" ico="▣" />
           <Tab id="home" label="Tài sản" ico="◆" />
           <Tab id="settings" label="Cài đặt" ico="⚙" />
         </nav>
