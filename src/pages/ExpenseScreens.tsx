@@ -349,58 +349,60 @@ export function SpendForm() {
         </button>
       </div>
 
-      {/* Ngày */}
-      <div className="spend-form-row">
-        <span className="spend-form-lab">Ngày</span>
-        <div className="spend-date-nav">
-          <button
-            type="button"
-            aria-label="Ngày trước"
-            onClick={() => setSpentAt((v) => shiftDayLocal(v, -1))}
-          >
-            ‹
-          </button>
-          <label className="spend-date-pill">
-            <span>{formatDayLabel(spentAt)}</span>
-            <input
-              type="datetime-local"
-              value={spentAt}
-              onChange={(e) => setSpentAt(e.target.value)}
-              aria-label="Chọn ngày giờ"
-            />
-          </label>
-          <button
-            type="button"
-            aria-label="Ngày sau"
-            onClick={() => setSpentAt((v) => shiftDayLocal(v, 1))}
-          >
-            ›
-          </button>
+      <div className="spend-form-fields">
+        {/* Ngày */}
+        <div className="spend-form-row">
+          <span className="spend-form-lab">Ngày</span>
+          <div className="spend-date-nav">
+            <button
+              type="button"
+              aria-label="Ngày trước"
+              onClick={() => setSpentAt((v) => shiftDayLocal(v, -1))}
+            >
+              ‹
+            </button>
+            <label className="spend-date-pill">
+              <span>{formatDayLabel(spentAt)}</span>
+              <input
+                type="datetime-local"
+                value={spentAt}
+                onChange={(e) => setSpentAt(e.target.value)}
+                aria-label="Chọn ngày giờ"
+              />
+            </label>
+            <button
+              type="button"
+              aria-label="Ngày sau"
+              onClick={() => setSpentAt((v) => shiftDayLocal(v, 1))}
+            >
+              ›
+            </button>
+          </div>
         </div>
-      </div>
 
-      {/* Ghi chú */}
-      <div className="spend-form-row">
-        <span className="spend-form-lab">Ghi chú</span>
-        <input
-          className="spend-form-input"
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-          placeholder="Chưa nhập vào"
-        />
-      </div>
-
-      {/* Số tiền */}
-      <div className="spend-form-row spend-amount-row">
-        <span className="spend-form-lab">{amountLabel}</span>
-        <div className="spend-amount-field">
-          <MoneyInput
-            value={amount}
-            onChange={setAmount}
-            unit="đ"
-            placeholder="0"
-            className="spend-amount-input"
+        {/* Ghi chú */}
+        <div className="spend-form-row">
+          <span className="spend-form-lab">Ghi chú</span>
+          <input
+            className="spend-form-input"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="Chưa nhập vào"
           />
+        </div>
+
+        {/* Số tiền */}
+        <div className="spend-form-row spend-amount-row">
+          <span className="spend-form-lab">{amountLabel}</span>
+          <div className="spend-amount-field">
+            <MoneyInput
+              value={amount}
+              onChange={setAmount}
+              unit="đ"
+              placeholder="0"
+              className="spend-amount-input"
+            />
+          </div>
         </div>
       </div>
 
@@ -416,16 +418,16 @@ export function SpendForm() {
               className={`spend-cat-tile ${on ? 'on' : ''}`}
               onClick={() => setCategoryId(c.id)}
               style={
-                on
-                  ? {
-                      borderColor: c.color,
-                      boxShadow: `0 0 0 1px ${c.color}`,
-                    }
-                  : undefined
+                {
+                  ['--tile-color' as string]: c.color,
+                  ['--tile-soft' as string]: `${c.color}18`,
+                } as React.CSSProperties
               }
             >
-              <span className="tile-ico" style={{ color: c.color }}>
-                {c.icon}
+              <span className="tile-ico-wrap">
+                <span className="tile-ico" style={{ color: c.color }}>
+                  {c.icon}
+                </span>
               </span>
               <span className="tile-name">{c.name}</span>
             </button>
@@ -436,7 +438,9 @@ export function SpendForm() {
           className="spend-cat-tile spend-cat-edit"
           onClick={() => setScreen('spend-categories')}
         >
-          <span className="tile-ico">＋</span>
+          <span className="tile-ico-wrap">
+            <span className="tile-ico">＋</span>
+          </span>
           <span className="tile-name">
             Chỉnh sửa <span className="tile-chev">›</span>
           </span>
