@@ -541,8 +541,7 @@ export const useStore = create<Store>()(
           } else if (
             cur.screen === 'spend-form' ||
             cur.screen === 'spend-detail' ||
-            cur.screen === 'spend-categories' ||
-            cur.screen === 'spend-budget'
+            cur.screen === 'spend-categories'
           ) {
             set({ screen: 'spend', detailAssetId: null })
             went = true

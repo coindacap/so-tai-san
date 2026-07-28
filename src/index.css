@@ -2217,3 +2217,128 @@ select {
 }
 .amt.num.down { color: var(--down); }
 .amt.num.up { color: var(--up, #1b7a3d); }
+
+/* ========== Báo cáo chi tiêu ========== */
+.report-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 2px 4px;
+}
+.report-head h1 {
+  font-size: 28px;
+  font-weight: 780;
+  letter-spacing: -0.03em;
+  margin: 0;
+}
+.report-month-pill {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 10px 0 12px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: linear-gradient(90deg, #fff7ed, #ffedd5);
+  border: 1px solid rgba(255, 149, 0, 0.22);
+}
+.report-month-pill > button {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  border: none;
+  background: rgba(255, 255, 255, 0.7);
+  font-size: 20px;
+  font-weight: 600;
+  color: #c2410c;
+}
+.report-month-mid {
+  flex: 1;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.report-month-mid strong {
+  font-size: 16px;
+  font-weight: 750;
+  color: #9a3412;
+}
+.report-month-mid span {
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(154, 52, 18, 0.7);
+}
+.report-sum-card {
+  background: var(--card);
+  border-radius: 16px;
+  border: 1px solid rgba(0, 0, 0, 0.04);
+  padding: 12px 14px;
+  margin-bottom: 4px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+.report-sum-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 15px;
+  font-weight: 650;
+  padding: 4px 0;
+}
+.report-sum-row.muted {
+  font-size: 12px;
+  font-weight: 550;
+  color: var(--muted);
+}
+.report-sum-row .down {
+  color: var(--down, #c41e3a);
+  font-weight: 750;
+}
+.report-section-title {
+  margin: 8px 2px 12px;
+  font-size: 15px;
+  font-weight: 750;
+  color: var(--brand, #c41e3a);
+  text-align: center;
+}
+.report-donut-wrap {
+  display: flex;
+  justify-content: center;
+  margin: 4px 0 18px;
+}
+.report-donut {
+  width: 200px;
+  height: 200px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.08);
+}
+.report-donut-hole {
+  width: 112px;
+  height: 112px;
+  border-radius: 50%;
+  background: var(--bg, #f2f2f7);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.04);
+}
+.report-donut-hole .k {
+  font-size: 11px;
+  font-weight: 650;
+  color: var(--muted);
+}
+.report-donut-hole .v {
+  font-size: 15px;
+  font-weight: 780;
+  letter-spacing: -0.02em;
+}
+.report-cat-list .end .d {
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 600;
+  margin-top: 2px;
+}

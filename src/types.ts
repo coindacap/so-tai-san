@@ -247,7 +247,6 @@ export type Screen =
   | 'spend-form'
   | 'spend-detail'
   | 'spend-categories'
-  | 'spend-budget'
   | 'onboarding'
 
 export type NavFrame = {

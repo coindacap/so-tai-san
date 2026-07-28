@@ -89,9 +89,6 @@ const SpendCategories = lazy(() =>
     default: m.SpendCategories,
   })),
 )
-const SpendBudget = lazy(() =>
-  import('./pages/ExpenseScreens').then((m) => ({ default: m.SpendBudget })),
-)
 
 function ScreenFallback() {
   return (
@@ -444,7 +441,6 @@ export default function App() {
             <SpendDetail privacy={privacy} />
           )}
           {store.screen === 'spend-categories' && <SpendCategories />}
-          {store.screen === 'spend-budget' && <SpendBudget />}
         </Suspense>
       </ErrorBoundary>
 

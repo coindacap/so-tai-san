@@ -24,10 +24,33 @@ function shiftMonth(ym: string, delta: number): string {
 
 function monthLabel(ym: string): string {
   const [y, m] = ym.split('-')
-  return `Tháng ${Number(m)}/${y}`
+  return `${String(m).padStart(2, '0')}/${y}`
 }
 
-/** Tab chính — dashboard chi tiêu tháng */
+function monthRangeLabel(ym: string): string {
+  const [y, m] = ym.split('-').map(Number)
+  const last = new Date(y!, m!, 0).getDate()
+  const mm = String(m).padStart(2, '0')
+  return `01/${mm} – ${last}/${mm}`
+}
+
+/** Donut CSS conic-gradient từ % danh mục */
+function donutStyle(
+  slices: { pct: number; color: string }[],
+): string {
+  if (!slices.length) return 'conic-gradient(#e5e5ea 0 100%)'
+  let acc = 0
+  const parts: string[] = []
+  for (const s of slices) {
+    const from = acc
+    acc += s.pct
+    parts.push(`${s.color} ${from}% ${Math.min(100, acc)}%`)
+  }
+  if (acc < 100) parts.push(`#e5e5ea ${acc}% 100%`)
+  return `conic-gradient(${parts.join(', ')})`
+}
+
+/** Tab chính — báo cáo chi theo tháng (biểu đồ + list %) */
 export function SpendHome({ privacy }: { privacy: boolean }) {
   const setScreen = useStore((s) => s.setScreen)
   const expenses = useStore((s) => s.expenses)
@@ -40,57 +63,56 @@ export function SpendHome({ privacy }: { privacy: boolean }) {
     [expenses, categories, budgets, ym],
   )
 
-  const overBudget =
-    sum.budgetLeft != null && sum.budgetLeft < 0
+  const donut = useMemo(() => donutStyle(sum.byCat), [sum.byCat])
+  const recent = useMemo(
+    () =>
+      sum.entries
+        .filter((e) => e.kind === 'expense')
+        .slice(0, 25),
+    [sum.entries],
+  )
 
   return (
     <div className="scroll">
-      <div className="large-title" style={{ paddingTop: 8 }}>
-        <h1>Chi tiêu</h1>
-        <div className="sub">{monthLabel(ym)}</div>
+      <div className="report-head">
+        <h1>Báo cáo</h1>
+        <button
+          type="button"
+          className="link-btn"
+          onClick={() => setScreen('spend-categories')}
+        >
+          Danh mục
+        </button>
       </div>
 
-      <div className="spend-month-nav">
-        <button type="button" className="icon-btn" onClick={() => setYm(shiftMonth(ym, -1))}>
+      {/* Chọn tháng */}
+      <div className="report-month-pill">
+        <button type="button" onClick={() => setYm(shiftMonth(ym, -1))} aria-label="Tháng trước">
           ‹
         </button>
-        <div className="spend-month-label">Đã chi</div>
-        <button type="button" className="icon-btn" onClick={() => setYm(shiftMonth(ym, 1))}>
+        <div className="report-month-mid">
+          <strong>{monthLabel(ym)}</strong>
+          <span>({monthRangeLabel(ym)})</span>
+        </div>
+        <button type="button" onClick={() => setYm(shiftMonth(ym, 1))} aria-label="Tháng sau">
           ›
         </button>
       </div>
 
-      <div className="spend-hero spend-hero-center">
-        <div className="k">Tháng này</div>
-        <div className="v num down">
-          {mask(privacy, fmtVnd(sum.expense))}
-          <small>đ</small>
+      {/* Tổng chi */}
+      <div className="report-sum-card">
+        <div className="report-sum-row">
+          <span>Chi tiêu</span>
+          <span className="num down">
+            −{mask(privacy, fmtVnd(sum.expense))}đ
+          </span>
         </div>
-        {sum.totalBudget != null && (
-          <div className="spend-budget-bar-wrap">
-            <div className="spend-budget-meta">
-              <span>
-                NS {mask(privacy, fmtVnd(sum.totalBudget))}
-              </span>
-              <span className={overBudget ? 'down' : ''}>
-                {overBudget
-                  ? `Vượt ${mask(privacy, fmtVnd(-sum.budgetLeft!))}`
-                  : `Còn ${mask(privacy, fmtVnd(sum.budgetLeft!))}`}
-              </span>
-            </div>
-            <div className="spend-budget-bar">
-              <div
-                className={`fill ${overBudget ? 'over' : ''}`}
-                style={{
-                  width: `${Math.min(100, sum.budgetUsedPct ?? 0)}%`,
-                }}
-              />
-            </div>
-          </div>
-        )}
+        <div className="report-sum-row muted">
+          <span>{sum.byCat.length} danh mục · {recent.length > 0 ? sum.entries.filter((e) => e.kind === 'expense').length : 0} khoản</span>
+        </div>
       </div>
 
-      {/* CTA giữa — ghi chi ngay */}
+      {/* CTA ghi chi to */}
       <div className="spend-cta-wrap">
         <button
           type="button"
@@ -101,62 +123,64 @@ export function SpendHome({ privacy }: { privacy: boolean }) {
           <span className="spend-cta-title">Ghi chi</span>
           <span className="spend-cta-sub">Chạm để thêm khoản chi ngay</span>
         </button>
-        <div className="spend-cta-row">
-          <button type="button" onClick={() => setScreen('spend-budget')}>
-            Ngân sách
-          </button>
-          <button type="button" onClick={() => setScreen('spend-categories')}>
-            Danh mục
-          </button>
-        </div>
       </div>
 
-      <div className="sec">
-        <h2>Theo danh mục</h2>
-      </div>
+      {/* Donut + list danh mục */}
+      <div className="report-section-title">Chi theo danh mục</div>
+
       {sum.byCat.length === 0 ? (
-        <div className="empty" style={{ paddingTop: 12 }}>
-          <h3>Chưa có chi tiêu</h3>
-          <p>Bấm nút lớn “Ghi chi” ở giữa để thêm.</p>
+        <div className="empty" style={{ paddingTop: 8 }}>
+          <h3>Chưa có dữ liệu tháng này</h3>
+          <p>Ghi chi để xem biểu đồ báo cáo.</p>
         </div>
       ) : (
-        <div className="group">
-          {sum.byCat.map((c) => (
-            <div key={c.categoryId} className="row" style={{ cursor: 'default' }}>
-              <div
-                className="mark"
-                style={{ background: `${c.color}22`, color: c.color }}
-              >
-                {c.icon}
-              </div>
-              <div className="body">
-                <div className="t">{c.name}</div>
-                <div className="d">{fmtNum(c.pct, 0)}% chi tháng</div>
-                <div className="spend-mini-bar">
-                  <div style={{ width: `${c.pct}%`, background: c.color }} />
-                </div>
-              </div>
-              <div className="end">
-                <div className="amt num">
-                  {mask(privacy, fmtVnd(c.amount, true))}
+        <>
+          <div className="report-donut-wrap">
+            <div className="report-donut" style={{ background: donut }}>
+              <div className="report-donut-hole">
+                <div className="k">Tổng chi</div>
+                <div className="v num">
+                  {mask(privacy, fmtVnd(sum.expense, true))}
                 </div>
               </div>
             </div>
-          ))}
-        </div>
+          </div>
+
+          <div className="group report-cat-list">
+            {sum.byCat.map((c) => (
+              <div key={c.categoryId} className="row" style={{ cursor: 'default' }}>
+                <div
+                  className="mark"
+                  style={{ background: `${c.color}22`, color: c.color }}
+                >
+                  {c.icon}
+                </div>
+                <div className="body">
+                  <div className="t">{c.name}</div>
+                  <div className="d">{fmtNum(c.pct, 1)}%</div>
+                </div>
+                <div className="end">
+                  <div className="amt num">
+                    {mask(privacy, fmtVnd(c.amount))}đ
+                  </div>
+                  <div className="d" style={{ textAlign: 'right' }}>
+                    {fmtNum(c.pct, 1)} %
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
       )}
 
-      <div className="sec">
+      <div className="sec" style={{ marginTop: 18 }}>
         <h2>Gần đây</h2>
         <button type="button" onClick={() => setScreen('spend-form')}>
           Ghi chi
         </button>
       </div>
       <div className="group">
-        {sum.entries
-          .filter((e) => e.kind === 'expense')
-          .slice(0, 40)
-          .map((e) => {
+        {recent.map((e) => {
           const cat = categories.find((c) => c.id === e.categoryId)
           return (
             <button
@@ -184,7 +208,6 @@ export function SpendHome({ privacy }: { privacy: boolean }) {
                     minute: '2-digit',
                   })}
                   {e.note ? ` · ${e.note}` : ''}
-                  {e.linkCash ? ' · ₫' : ''}
                 </div>
               </div>
               <div className="end">
@@ -196,9 +219,9 @@ export function SpendHome({ privacy }: { privacy: boolean }) {
             </button>
           )
         })}
-        {sum.entries.filter((e) => e.kind === 'expense').length === 0 && (
+        {recent.length === 0 && (
           <div className="row" style={{ color: 'var(--muted)' }}>
-            Không có chi tiêu tháng này
+            Chưa có khoản chi
           </div>
         )}
       </div>
@@ -535,100 +558,6 @@ export function SpendCategories() {
       >
         Thêm
       </button>
-    </div>
-  )
-}
-
-export function SpendBudget() {
-  const setScreen = useStore((s) => s.setScreen)
-  const showToast = useStore((s) => s.showToast)
-  const budgets = useStore((s) => s.expenseBudgets)
-  const expenses = useStore((s) => s.expenses)
-  const categories = useStore((s) => s.expenseCategories)
-  const setExpenseBudget = useStore((s) => s.setExpenseBudget)
-  const clearExpenseBudget = useStore((s) => s.clearExpenseBudget)
-  const [ym, setYm] = useState(currentYearMonth)
-  const sum = useMemo(
-    () => monthSummary(expenses, categories, budgets, ym),
-    [expenses, categories, budgets, ym],
-  )
-  const [amount, setAmount] = useState(
-    sum.totalBudget != null ? String(Math.round(sum.totalBudget)) : '',
-  )
-
-  return (
-    <div className="scroll">
-      <div className="nav">
-        <button type="button" className="back" onClick={() => setScreen('spend')}>
-          ‹ Chi tiêu
-        </button>
-      </div>
-      <div className="large-title">
-        <h1>Ngân sách</h1>
-        <div className="sub">{monthLabel(ym)}</div>
-      </div>
-
-      <div className="spend-month-nav">
-        <button type="button" className="icon-btn" onClick={() => setYm(shiftMonth(ym, -1))}>
-          ‹
-        </button>
-        <div className="spend-month-label">{monthLabel(ym)}</div>
-        <button type="button" className="icon-btn" onClick={() => setYm(shiftMonth(ym, 1))}>
-          ›
-        </button>
-      </div>
-
-      <div className="field">
-        <label>Ngân sách tổng chi tháng (đ)</label>
-        <MoneyInput
-          value={amount}
-          onChange={setAmount}
-          unit="đ"
-        />
-        <div className="hint">
-          Đã chi {fmtVnd(sum.expense)} ·{' '}
-          {sum.totalBudget != null
-            ? `Hạn mức ${fmtVnd(sum.totalBudget)}`
-            : 'Chưa đặt hạn mức'}
-        </div>
-      </div>
-      <button
-        className="btn-primary"
-        type="button"
-        onClick={() => {
-          const a = moneyNum(amount)
-          const res = setExpenseBudget({
-            yearMonth: ym,
-            categoryId: null,
-            amount: a,
-          })
-          showToast(res.ok ? 'Đã lưu ngân sách' : res.error)
-        }}
-      >
-        Lưu ngân sách tháng
-      </button>
-      {sum.totalBudget != null && (
-        <button
-          className="btn-secondary"
-          type="button"
-          style={{ marginTop: 8 }}
-          onClick={() => {
-            clearExpenseBudget(ym, null)
-            setAmount('')
-            showToast('Đã xóa ngân sách tháng')
-          }}
-        >
-          Xóa ngân sách tháng này
-        </button>
-      )}
-
-      <div className="sec" style={{ marginTop: 24 }}>
-        <h2>Gợi ý</h2>
-      </div>
-      <div className="card" style={{ padding: 14, fontSize: 13, lineHeight: 1.45, color: 'var(--muted)' }}>
-        Đặt hạn mức chi theo tháng để Home / tab Chi tiêu cảnh báo khi sắp vượt.
-        Có thể gắn từng khoản chi với <b>tiền mặt VND</b> để khớp sổ tài sản.
-      </div>
     </div>
   )
 }
