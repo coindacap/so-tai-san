@@ -2814,3 +2814,35 @@ select {
   font-weight: 600;
   margin-top: 2px;
 }
+
+/* Gần đây — nhóm theo ngày */
+.spend-day-block {
+  margin-bottom: 14px;
+}
+.spend-day-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 4px 4px 8px;
+}
+.spend-day-label {
+  font-size: 13px;
+  font-weight: 750;
+  color: #3a3a3c;
+  letter-spacing: -0.01em;
+}
+.spend-day-sum {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.spend-day-sum .down {
+  color: var(--down, #ff3b30);
+}
+.spend-day-sum .up {
+  color: var(--up, var(--green-ink, #0e7a32));
+}

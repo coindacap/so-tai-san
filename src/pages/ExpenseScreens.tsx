@@ -34,6 +34,68 @@ function monthRangeLabel(ym: string): string {
   return `01/${mm} – ${last}/${mm}`
 }
 
+const WEEKDAYS_VI = ['CN', 'Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7']
+
+/** YYYY-MM-DD local */
+function dayKeyOf(iso: string): string {
+  const d = new Date(iso)
+  const pad = (x: number) => String(x).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+}
+
+function dayKeyToday(): string {
+  return dayKeyOf(nowIso())
+}
+
+function dayKeyYesterday(): string {
+  const d = new Date()
+  d.setDate(d.getDate() - 1)
+  return dayKeyOf(d.toISOString())
+}
+
+/** Nhãn nhóm ngày: Hôm nay / Hôm qua / Thứ x, dd/mm */
+function dayGroupLabel(dayKey: string): string {
+  if (dayKey === dayKeyToday()) return 'Hôm nay'
+  if (dayKey === dayKeyYesterday()) return 'Hôm qua'
+  const [y, m, d] = dayKey.split('-').map(Number)
+  const dt = new Date(y!, m! - 1, d!)
+  const wd = WEEKDAYS_VI[dt.getDay()]
+  return `${wd}, ${String(d).padStart(2, '0')}/${String(m).padStart(2, '0')}`
+}
+
+type DayGroup<T> = {
+  dayKey: string
+  label: string
+  totalExpense: number
+  totalIncome: number
+  items: T[]
+}
+
+function groupByDay<T extends { spentAt: string; kind: string; amount: number }>(
+  entries: T[],
+): DayGroup<T>[] {
+  const map = new Map<string, DayGroup<T>>()
+  for (const e of entries) {
+    const key = dayKeyOf(e.spentAt)
+    let g = map.get(key)
+    if (!g) {
+      g = {
+        dayKey: key,
+        label: dayGroupLabel(key),
+        totalExpense: 0,
+        totalIncome: 0,
+        items: [],
+      }
+      map.set(key, g)
+    }
+    g.items.push(e)
+    if (e.kind === 'expense') g.totalExpense += e.amount
+    else g.totalIncome += e.amount
+  }
+  // entries đã sort mới → cũ; giữ thứ tự ngày theo first-seen
+  return [...map.values()]
+}
+
 /** Donut CSS conic-gradient từ % danh mục */
 function donutStyle(
   slices: { pct: number; color: string }[],
@@ -64,13 +126,12 @@ export function SpendHome({ privacy }: { privacy: boolean }) {
   )
 
   const donut = useMemo(() => donutStyle(sum.byCat), [sum.byCat])
-  const recent = useMemo(
-    () =>
-      sum.entries
-        .filter((e) => e.kind === 'expense')
-        .slice(0, 25),
+  const expenseCount = useMemo(
+    () => sum.entries.filter((e) => e.kind === 'expense').length,
     [sum.entries],
   )
+  /** Toàn bộ giao dịch tháng, gom theo ngày (mới → cũ) */
+  const dayGroups = useMemo(() => groupByDay(sum.entries), [sum.entries])
 
   return (
     <div className="scroll">
@@ -107,8 +168,19 @@ export function SpendHome({ privacy }: { privacy: boolean }) {
             −{mask(privacy, fmtVnd(sum.expense))}đ
           </span>
         </div>
+        {sum.income > 0 && (
+          <div className="report-sum-row">
+            <span>Thu nhập</span>
+            <span className="num up">
+              +{mask(privacy, fmtVnd(sum.income))}đ
+            </span>
+          </div>
+        )}
         <div className="report-sum-row muted">
-          <span>{sum.byCat.length} danh mục · {recent.length > 0 ? sum.entries.filter((e) => e.kind === 'expense').length : 0} khoản</span>
+          <span>
+            {sum.byCat.length} danh mục · {expenseCount} khoản chi
+            {dayGroups.length > 0 ? ` · ${dayGroups.length} ngày` : ''}
+          </span>
         </div>
       </div>
 
@@ -179,57 +251,78 @@ export function SpendHome({ privacy }: { privacy: boolean }) {
           Ghi chi
         </button>
       </div>
-      <div className="group">
-        {recent.map((e) => {
-          const cat = categories.find((c) => c.id === e.categoryId)
-          return (
-            <button
-              key={e.id}
-              type="button"
-              className="row"
-              onClick={() => setScreen('spend-detail', e.id)}
-            >
-              <div
-                className="mark"
-                style={{
-                  background: `${cat?.color || '#888'}22`,
-                  color: cat?.color || '#888',
-                }}
-              >
-                {cat?.icon || '?'}
-              </div>
-              <div className="body">
-                <div className="t">{cat?.name || '—'}</div>
-                <div className="d">
-                  {new Date(e.spentAt).toLocaleString('vi-VN', {
-                    day: '2-digit',
-                    month: '2-digit',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  })}
-                  {e.note ? ` · ${e.note}` : ''}
-                </div>
-              </div>
-              <div className="end">
-                <div className="amt num down">
-                  −{mask(privacy, fmtVnd(e.amount, true))}
-                </div>
-              </div>
-              <span className="chev">›</span>
-            </button>
-          )
-        })}
-        {recent.length === 0 && (
+
+      {dayGroups.length === 0 ? (
+        <div className="group">
           <div className="row" style={{ color: 'var(--muted)' }}>
             Chưa có khoản chi
           </div>
-        )}
-      </div>
+        </div>
+      ) : (
+        dayGroups.map((g) => (
+          <div key={g.dayKey} className="spend-day-block">
+            <div className="spend-day-head">
+              <span className="spend-day-label">{g.label}</span>
+              <span className="spend-day-sum">
+                {g.totalExpense > 0 && (
+                  <span className="down">
+                    −{mask(privacy, fmtVnd(g.totalExpense, true))}
+                  </span>
+                )}
+                {g.totalIncome > 0 && (
+                  <span className="up">
+                    +{mask(privacy, fmtVnd(g.totalIncome, true))}
+                  </span>
+                )}
+              </span>
+            </div>
+            <div className="group">
+              {g.items.map((e) => {
+                const cat = categories.find((c) => c.id === e.categoryId)
+                const isOut = e.kind === 'expense'
+                return (
+                  <button
+                    key={e.id}
+                    type="button"
+                    className="row"
+                    onClick={() => setScreen('spend-detail', e.id)}
+                  >
+                    <div
+                      className="mark"
+                      style={{
+                        background: `${cat?.color || '#888'}22`,
+                        color: cat?.color || '#888',
+                      }}
+                    >
+                      {cat?.icon || '?'}
+                    </div>
+                    <div className="body">
+                      <div className="t">{cat?.name || '—'}</div>
+                      <div className="d">
+                        {new Date(e.spentAt).toLocaleTimeString('vi-VN', {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                        {e.note ? ` · ${e.note}` : ''}
+                      </div>
+                    </div>
+                    <div className="end">
+                      <div className={`amt num ${isOut ? 'down' : 'up'}`}>
+                        {isOut ? '−' : '+'}
+                        {mask(privacy, fmtVnd(e.amount, true))}
+                      </div>
+                    </div>
+                    <span className="chev">›</span>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        ))
+      )}
     </div>
   )
 }
-
-const WEEKDAYS_VI = ['CN', 'Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7']
 
 function formatDayLabel(localInput: string): string {
   const d = new Date(fromLocalInput(localInput))
