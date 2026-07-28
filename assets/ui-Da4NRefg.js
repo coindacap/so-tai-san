@@ -1,0 +1,1 @@
+function e(e){return e==null||e===0?`flat`:e>0?`up`:`down`}function t(e,t){return e?`••••`:t}export{e as n,t};
