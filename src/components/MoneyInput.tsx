@@ -1,4 +1,4 @@
-import { formatMoneyInput, parseMoney } from '../lib/format'
+import { formatMoneyInput } from '../lib/format'
 
 type Props = {
   value: string | number
@@ -107,29 +107,4 @@ export function MoneyInput({
   )
 }
 
-export function moneyNum(s: string | number): number {
-  if (typeof s === 'number') return Number.isFinite(s) ? s : 0
-  const t = String(s).trim()
-  if (!t) return 0
 
-  // "12." đang gõ dở
-  if (t.endsWith('.')) {
-    const n = Number(t.slice(0, -1))
-    return Number.isFinite(n) ? n : 0
-  }
-
-  // "0,5" / "1.234,56"
-  const lastComma = t.lastIndexOf(',')
-  const lastDot = t.lastIndexOf('.')
-  if (lastComma >= 0 && lastDot >= 0) {
-    if (lastComma > lastDot) {
-      return Number(t.replace(/\./g, '').replace(',', '.')) || 0
-    }
-    return Number(t.replace(/,/g, '')) || 0
-  }
-  if (lastComma >= 0 && t.split(',').length === 2) {
-    return Number(t.replace(',', '.').replace(/[^\d.]/g, '')) || 0
-  }
-  if (/^\d+\.\d{1,12}$/.test(t) || /^\d+$/.test(t)) return Number(t) || 0
-  return parseMoney(t)
-}

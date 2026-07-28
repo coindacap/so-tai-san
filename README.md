@@ -43,6 +43,8 @@ Cloud lưu data ở **Supabase free** (không phải Vercel DB):
 
 SQL Editor → dán nội dung file `supabase/schema.sql` → Run.
 
+> **Đã có project cũ?** Chạy lại `schema.sql` (an toàn) để **revoke quyền `anon`** trên bảng `snapshots` — chỉ `authenticated` + RLS.
+
 ### 3. Tắt xác nhận email (dùng 1 mình)
 
 **Authentication → Providers → Email → Confirm email = OFF**
@@ -110,3 +112,11 @@ npx vercel --prod
 ## Backup thủ công
 
 Cài đặt → **Export JSON** (vẫn nên làm định kỳ, song song cloud).
+
+## Tính năng gần đây
+
+- Code-split theo màn hình (bundle nhẹ hơn, lazy load)
+- **Cần chú ý**: nhắc đáo hạn tiết kiệm / hạn cho vay (≤ 30 ngày)
+- **NAV sparkline** trên Home (lưu theo ngày trên máy, tối đa 90 ngày)
+- PWA service worker: mở shell offline; sổ vẫn local-first
+- Schema Supabase: không grant bảng snapshot cho role `anon`

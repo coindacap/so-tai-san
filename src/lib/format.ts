@@ -36,6 +36,37 @@ export function parseMoney(s: string | number): number {
   return Number.isFinite(n) ? n : 0
 }
 
+/**
+ * Parse ô nhập tiền (hỗ trợ "12.", "0,5", "1.234,56", số nguyên).
+ * Dùng khi submit form — khác parseMoney (chỉ strip non-digit).
+ */
+export function moneyNum(s: string | number): number {
+  if (typeof s === 'number') return Number.isFinite(s) ? s : 0
+  const t = String(s).trim()
+  if (!t) return 0
+
+  // "12." đang gõ dở
+  if (t.endsWith('.')) {
+    const n = Number(t.slice(0, -1))
+    return Number.isFinite(n) ? n : 0
+  }
+
+  // "0,5" / "1.234,56"
+  const lastComma = t.lastIndexOf(',')
+  const lastDot = t.lastIndexOf('.')
+  if (lastComma >= 0 && lastDot >= 0) {
+    if (lastComma > lastDot) {
+      return Number(t.replace(/\./g, '').replace(',', '.')) || 0
+    }
+    return Number(t.replace(/,/g, '')) || 0
+  }
+  if (lastComma >= 0 && t.split(',').length === 2) {
+    return Number(t.replace(',', '.').replace(/[^\d.]/g, '')) || 0
+  }
+  if (/^\d+\.\d{1,12}$/.test(t) || /^\d+$/.test(t)) return Number(t) || 0
+  return parseMoney(t)
+}
+
 /** "50000000" | 50000000 → "50.000.000" (hiển thị ô nhập) */
 export function formatMoneyInput(s: string | number): string {
   const digits = String(s ?? '').replace(/\D/g, '')

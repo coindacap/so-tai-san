@@ -9,8 +9,12 @@ create table if not exists public.snapshots (
 
 alter table public.snapshots enable row level security;
 
-grant usage on schema public to postgres, anon, authenticated, service_role;
-grant all on table public.snapshots to postgres, authenticated, service_role, anon;
+-- Chỉ authenticated + service_role; RLS vẫn khóa theo auth.uid()
+grant usage on schema public to postgres, authenticated, service_role;
+grant select, insert, update, delete on table public.snapshots
+  to postgres, authenticated, service_role;
+-- Thu hồi nếu từng grant rộng cho anon (chạy lại file này an toàn)
+revoke all on table public.snapshots from anon;
 
 drop policy if exists "snapshots_select_own" on public.snapshots;
 drop policy if exists "snapshots_insert_own" on public.snapshots;
