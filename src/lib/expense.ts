@@ -42,6 +42,7 @@ export function seedExpenseCategories(): ExpenseCategory[] {
     updatedAt: t,
   })
 
+  // Chỉ chi tiêu (không thu nhập) — gọn UI
   return [
     mk('Ăn uống', '🍜', '#ff9f0a', 'expense', 1),
     mk('Di chuyển', '🚗', '#64d2ff', 'expense', 2),
@@ -52,10 +53,7 @@ export function seedExpenseCategories(): ExpenseCategory[] {
     mk('Giải trí', '🎮', '#5e5ce6', 'expense', 7),
     mk('Giáo dục', '📚', '#0a84ff', 'expense', 8),
     mk('Gia đình', '👨‍👩‍👧', '#ff6482', 'expense', 9),
-    mk('Khác (chi)', '⋯', '#8e8e93', 'expense', 99),
-    mk('Lương', '💼', '#30d158', 'income', 1),
-    mk('Thưởng', '🎁', '#ffd60a', 'income', 2),
-    mk('Thu khác', '💰', '#64d2ff', 'income', 3),
+    mk('Khác', '⋯', '#8e8e93', 'expense', 99),
   ]
 }
 

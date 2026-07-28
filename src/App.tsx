@@ -122,9 +122,13 @@ export default function App() {
         s.loans.length > 0 ||
         s.expenses.length > 0
       if (has && s.screen === 'onboarding') {
-        useStore.setState({ screen: 'home' })
-      } else if (!has && s.screen === 'home' && !s.settings.hasOnboarded) {
-        // lần đầu chưa có data
+        // Vào app: mặc định tab Chi tiêu (không lộ tài sản ngay)
+        useStore.setState({ screen: 'spend' })
+      } else if (
+        !has &&
+        (s.screen === 'home' || s.screen === 'spend') &&
+        !s.settings.hasOnboarded
+      ) {
         useStore.setState({ screen: 'onboarding' })
       }
     }
@@ -387,7 +391,11 @@ export default function App() {
       <PasswordRecoveryGate />
       <ErrorBoundary
         onReset={() =>
-          useStore.setState({ screen: 'home', detailAssetId: null, navStack: [] })
+          useStore.setState({
+            screen: 'spend',
+            detailAssetId: null,
+            navStack: [],
+          })
         }
       >
         <Suspense fallback={<ScreenFallback />}>
@@ -442,22 +450,13 @@ export default function App() {
 
       {showTabs && (
         <nav
-          className={`tabbar${chromeVisible ? '' : ' is-away'}`}
+          className={`tabbar tabbar-3${chromeVisible ? '' : ' is-away'}`}
           aria-hidden={!chromeVisible}
         >
-          <Tab id="home" label="Tài sản" ico="◆" />
+          {/* Thứ tự: Chi tiêu → Cho vay → Tài sản (tài sản cuối, ít lộ) */}
           <Tab id="spend" label="Chi tiêu" ico="◈" />
-          <button
-            type="button"
-            className="fab"
-            onClick={() => store.setScreen('spend-form', 'expense')}
-            aria-label="Thêm chi tiêu nhanh"
-            title="Ghi chi tiêu"
-          >
-            +
-          </button>
           <Tab id="loans" label="Cho vay" ico="◎" />
-          <Tab id="settings" label="Cài đặt" ico="⚙" />
+          <Tab id="home" label="Tài sản" ico="◆" />
         </nav>
       )}
 

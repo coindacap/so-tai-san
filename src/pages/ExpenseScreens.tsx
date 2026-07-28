@@ -14,8 +14,7 @@ import {
   fromLocalInput,
 } from '../lib/format'
 import { MoneyInput } from '../components/MoneyInput'
-import { mask, pctClass } from '../lib/ui'
-import type { ExpenseKind } from '../types'
+import { mask } from '../lib/ui'
 
 function shiftMonth(ym: string, delta: number): string {
   const [y, m] = ym.split('-').map(Number)
@@ -48,7 +47,7 @@ export function SpendHome({ privacy }: { privacy: boolean }) {
     <div className="scroll">
       <div className="large-title" style={{ paddingTop: 8 }}>
         <h1>Chi tiêu</h1>
-        <div className="sub">Theo dõi thu · chi · ngân sách</div>
+        <div className="sub">Theo dõi chi · ngân sách tháng</div>
       </div>
 
       <div className="spend-month-nav">
@@ -62,26 +61,10 @@ export function SpendHome({ privacy }: { privacy: boolean }) {
       </div>
 
       <div className="spend-hero">
-        <div className="spend-hero-row">
-          <div>
-            <div className="k">Chi tháng này</div>
-            <div className="v num down">
-              {mask(privacy, fmtVnd(sum.expense))}
-              <small>đ</small>
-            </div>
-          </div>
-          <div className="end">
-            <div className="k">Thu</div>
-            <div className="v num up">
-              {mask(privacy, fmtVnd(sum.income))}
-            </div>
-          </div>
-        </div>
-        <div className="spend-hero-net">
-          <span>Còn lại (thu − chi)</span>
-          <span className={`num ${pctClass(sum.net)}`}>
-            {mask(privacy, fmtVnd(sum.net))}
-          </span>
+        <div className="k">Đã chi tháng này</div>
+        <div className="v num down" style={{ fontSize: 28, marginTop: 4 }}>
+          {mask(privacy, fmtVnd(sum.expense))}
+          <small>đ</small>
         </div>
         {sum.totalBudget != null && (
           <div className="spend-budget-bar-wrap">
@@ -107,14 +90,10 @@ export function SpendHome({ privacy }: { privacy: boolean }) {
         )}
       </div>
 
-      <div className="quick home-quick" style={{ marginBottom: 8 }}>
-        <button type="button" onClick={() => setScreen('spend-form', 'expense')}>
+      <div className="quick spend-quick" style={{ marginBottom: 8 }}>
+        <button type="button" onClick={() => setScreen('spend-form')}>
           <div className="qico" style={{ background: '#FFE5E8', color: '#C41E3A' }}>−</div>
           <span>Ghi chi</span>
-        </button>
-        <button type="button" onClick={() => setScreen('spend-form', 'income')}>
-          <div className="qico" style={{ background: '#D8F5E2', color: '#1B7A3D' }}>+</div>
-          <span>Ghi thu</span>
         </button>
         <button type="button" onClick={() => setScreen('spend-budget')}>
           <div className="qico" style={{ background: '#E8E0FF', color: '#5E5CE6' }}>▦</div>
@@ -163,12 +142,15 @@ export function SpendHome({ privacy }: { privacy: boolean }) {
 
       <div className="sec">
         <h2>Gần đây</h2>
-        <button type="button" onClick={() => setScreen('spend-form', 'expense')}>
+        <button type="button" onClick={() => setScreen('spend-form')}>
           Thêm
         </button>
       </div>
       <div className="group">
-        {sum.entries.slice(0, 40).map((e) => {
+        {sum.entries
+          .filter((e) => e.kind === 'expense')
+          .slice(0, 40)
+          .map((e) => {
           const cat = categories.find((c) => c.id === e.categoryId)
           return (
             <button
@@ -200,20 +182,17 @@ export function SpendHome({ privacy }: { privacy: boolean }) {
                 </div>
               </div>
               <div className="end">
-                <div
-                  className={`amt num ${e.kind === 'expense' ? 'down' : 'up'}`}
-                >
-                  {e.kind === 'expense' ? '−' : '+'}
-                  {mask(privacy, fmtVnd(e.amount, true))}
+                <div className="amt num down">
+                  −{mask(privacy, fmtVnd(e.amount, true))}
                 </div>
               </div>
               <span className="chev">›</span>
             </button>
           )
         })}
-        {sum.entries.length === 0 && (
+        {sum.entries.filter((e) => e.kind === 'expense').length === 0 && (
           <div className="row" style={{ color: 'var(--muted)' }}>
-            Không có giao dịch tháng này
+            Không có chi tiêu tháng này
           </div>
         )}
       </div>
@@ -221,21 +200,17 @@ export function SpendHome({ privacy }: { privacy: boolean }) {
   )
 }
 
-/** Form ghi chi / thu — detailAssetId = 'expense' | 'income' | entry id edit */
+/** Form ghi chi (chỉ chi, không thu) */
 export function SpendForm() {
   const setScreen = useStore((s) => s.setScreen)
   const showToast = useStore((s) => s.showToast)
   const addExpense = useStore((s) => s.addExpense)
-  const detail = useStore((s) => s.detailAssetId)
   const categories = useStore((s) => s.expenseCategories)
   const linkDefault = useStore((s) => s.settings.expenseLinkCashDefault)
   const updateSettings = useStore((s) => s.updateSettings)
 
-  const kind: ExpenseKind =
-    detail === 'income' ? 'income' : 'expense'
-
   const cats = categories
-    .filter((c) => c.kind === kind && !c.archived)
+    .filter((c) => c.kind === 'expense' && !c.archived)
     .sort((a, b) => a.sortOrder - b.sortOrder)
 
   const [categoryId, setCategoryId] = useState('')
@@ -248,7 +223,7 @@ export function SpendForm() {
   const firstCatId = cats[0]?.id || ''
   useEffect(() => {
     setCategoryId(firstCatId)
-  }, [kind, firstCatId])
+  }, [firstCatId])
 
   function submit() {
     const a = moneyNum(amount)
@@ -258,7 +233,7 @@ export function SpendForm() {
     }
     setBusy(true)
     const res = addExpense({
-      kind,
+      kind: 'expense',
       categoryId,
       amount: a,
       spentAt: fromLocalInput(spentAt),
@@ -270,7 +245,7 @@ export function SpendForm() {
       showToast(res.error)
       return
     }
-    showToast(kind === 'expense' ? 'Đã ghi chi' : 'Đã ghi thu')
+    showToast('Đã ghi chi')
     setScreen('spend')
   }
 
@@ -282,7 +257,7 @@ export function SpendForm() {
         </button>
       </div>
       <div className="large-title" style={{ paddingTop: 4 }}>
-        <h1>{kind === 'expense' ? 'Ghi chi' : 'Ghi thu'}</h1>
+        <h1>Ghi chi</h1>
       </div>
 
       <div className="field">
@@ -332,11 +307,9 @@ export function SpendForm() {
       <div className="card" style={{ margin: '12px 0' }}>
         <div className="switch-row">
           <div>
-            <div style={{ fontWeight: 650 }}>
-              {kind === 'expense' ? 'Trừ tiền mặt VND' : 'Cộng tiền mặt VND'}
-            </div>
+            <div style={{ fontWeight: 650 }}>Trừ tiền mặt VND</div>
             <div style={{ fontSize: 12, color: 'var(--muted)' }}>
-              Đồng bộ với sổ tài sản (tiền mặt)
+              Đồng bộ sổ tài sản (tùy chọn)
             </div>
           </div>
           <button
@@ -357,7 +330,7 @@ export function SpendForm() {
               updateSettings({ expenseLinkCashDefault: linkCash })
               showToast(
                 linkCash
-                  ? 'Mặc định: có gắn tiền mặt'
+                  ? 'Mặc định: trừ tiền mặt'
                   : 'Mặc định: chỉ sổ chi tiêu',
               )
             }}
@@ -373,7 +346,7 @@ export function SpendForm() {
         disabled={busy}
         onClick={submit}
       >
-        {busy ? 'Đang lưu…' : kind === 'expense' ? 'Lưu chi tiêu' : 'Lưu thu nhập'}
+        {busy ? 'Đang lưu…' : 'Lưu chi tiêu'}
       </button>
     </div>
   )
@@ -414,23 +387,16 @@ export function SpendDetail({ privacy }: { privacy: boolean }) {
       </div>
       <div className="large-title">
         <h1>{cat?.icon} {cat?.name || 'Giao dịch'}</h1>
-        <div className="sub">
-          {yearMonthOf(e.spentAt)} ·{' '}
-          {e.kind === 'expense' ? 'Chi' : 'Thu'}
-        </div>
+        <div className="sub">{yearMonthOf(e.spentAt)} · Chi</div>
       </div>
 
       <div className="card" style={{ padding: 16, marginBottom: 12 }}>
-        <div
-          className={`num ${e.kind === 'expense' ? 'down' : 'up'}`}
-          style={{ fontSize: 28, fontWeight: 750 }}
-        >
-          {e.kind === 'expense' ? '−' : '+'}
-          {mask(privacy, fmtVnd(e.amount))} đ
+        <div className="num down" style={{ fontSize: 28, fontWeight: 750 }}>
+          −{mask(privacy, fmtVnd(e.amount))} đ
         </div>
         <div style={{ marginTop: 8, color: 'var(--muted)', fontSize: 13 }}>
           {new Date(e.spentAt).toLocaleString('vi-VN')}
-          {e.linkCash ? ' · Đã gắn tiền mặt' : ' · Chỉ sổ chi tiêu'}
+          {e.linkCash ? ' · Đã trừ tiền mặt' : ' · Chỉ sổ chi tiêu'}
         </div>
       </div>
 
@@ -482,12 +448,11 @@ export function SpendCategories() {
   const categories = useStore((s) => s.expenseCategories)
   const addExpenseCategory = useStore((s) => s.addExpenseCategory)
   const updateExpenseCategory = useStore((s) => s.updateExpenseCategory)
-  const [kind, setKind] = useState<ExpenseKind>('expense')
   const [name, setName] = useState('')
   const [icon, setIcon] = useState('🏷')
 
   const list = categories
-    .filter((c) => c.kind === kind && !c.archived)
+    .filter((c) => c.kind === 'expense' && !c.archived)
     .sort((a, b) => a.sortOrder - b.sortOrder)
 
   return (
@@ -498,24 +463,7 @@ export function SpendCategories() {
         </button>
       </div>
       <div className="large-title">
-        <h1>Danh mục</h1>
-      </div>
-
-      <div className="seg" style={{ marginBottom: 12 }}>
-        <button
-          type="button"
-          className={kind === 'expense' ? 'on' : ''}
-          onClick={() => setKind('expense')}
-        >
-          Chi
-        </button>
-        <button
-          type="button"
-          className={kind === 'income' ? 'on' : ''}
-          onClick={() => setKind('income')}
-        >
-          Thu
-        </button>
+        <h1>Danh mục chi</h1>
       </div>
 
       <div className="group">
@@ -569,8 +517,8 @@ export function SpendCategories() {
           const res = addExpenseCategory({
             name,
             icon: icon || '🏷',
-            color: kind === 'income' ? '#30d158' : '#ff9f0a',
-            kind,
+            color: '#ff9f0a',
+            kind: 'expense',
           })
           if (!res.ok) showToast(res.error)
           else {

@@ -1657,7 +1657,7 @@ export const useStore = create<Store>()(
             : seedExpenseCategories(),
           expenses: data.expenses ?? [],
           expenseBudgets: data.expenseBudgets ?? [],
-          screen: 'home',
+          screen: 'spend',
           detailAssetId: null,
           navStack: [],
         })
@@ -1714,7 +1714,7 @@ export const useStore = create<Store>()(
               expenseCategories: seedExpenseCategories(),
               expenses: [],
               expenseBudgets: [],
-              screen: 'home',
+              screen: 'spend',
               detailAssetId: null,
             })
             return {
@@ -1747,7 +1747,7 @@ export const useStore = create<Store>()(
               expenseBudgets:
                 (data.expenseBudgets as AppState['expenseBudgets']) || [],
               version: (data.version as number) || 3,
-              screen: 'home',
+              screen: 'spend',
               detailAssetId: null,
             })
             return {
@@ -2065,7 +2065,8 @@ export const useStore = create<Store>()(
           expenseBudgets: p.expenseBudgets ?? [],
           navStack: [],
         }
-        merged.screen = hasAnyData(merged) ? 'home' : 'onboarding'
+        // Có data → vào Chi tiêu trước (không mở Tài sản ngay)
+        merged.screen = hasAnyData(merged) ? 'spend' : 'onboarding'
         return merged
       },
       onRehydrateStorage: () => (state, err) => {
@@ -2077,7 +2078,7 @@ export const useStore = create<Store>()(
         // setState sau rehydrate để chắc chắn UI cập nhật (iOS)
         setTimeout(() => {
           const s = useStore.getState()
-          const next = hasAnyData(s) ? 'home' : 'onboarding'
+          const next = hasAnyData(s) ? 'spend' : 'onboarding'
           if (s.screen !== next || !s.settings.hasOnboarded) {
             useStore.setState({
               screen: next,

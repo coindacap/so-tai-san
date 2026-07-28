@@ -86,7 +86,7 @@ export function Onboarding() {
             goldChi: 0,
             goldAvg: 7850000,
           })
-          setScreen('home')
+          setScreen('spend')
         }}
       >
         Bỏ qua · sổ trống

@@ -1000,6 +1000,15 @@ select {
   transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
   box-shadow: 0 -6px 20px rgba(0, 0, 0, 0.06);
 }
+/* 3 tab: Chi tiêu | Cho vay | Tài sản — không FAB */
+.tabbar.tabbar-3 {
+  grid-template-columns: 1fr 1fr 1fr;
+  align-items: center;
+  padding-top: 10px;
+}
+.spend-quick {
+  grid-template-columns: repeat(3, 1fr) !important;
+}
 /* Ẩn tạm khi kéo xuống — kéo lên nhẹ là hiện lại */
 .tabbar.is-away {
   transform: translateX(-50%) translateY(110%);
