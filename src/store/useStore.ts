@@ -2046,10 +2046,20 @@ export const useStore = create<Store>()(
           interestType: l.interestType ?? ('annual' as const),
           interestValue: l.interestValue ?? l.rateAnnual ?? 0,
         }))
-        const expenseCategories =
+        // Có list cũ → giữ; thiếu danh mục thu thì bổ sung seed income
+        let expenseCategories =
           p.expenseCategories?.length
             ? p.expenseCategories
             : seedExpenseCategories()
+        if (
+          expenseCategories.length > 0 &&
+          !expenseCategories.some((c) => c.kind === 'income')
+        ) {
+          expenseCategories = [
+            ...expenseCategories,
+            ...seedExpenseCategories().filter((c) => c.kind === 'income'),
+          ]
+        }
         const merged = {
           ...current,
           version: p.version ?? current.version,

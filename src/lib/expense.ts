@@ -42,18 +42,22 @@ export function seedExpenseCategories(): ExpenseCategory[] {
     updatedAt: t,
   })
 
-  // Chỉ chi tiêu (không thu nhập) — gọn UI
+  // Danh mục thực tế — lưới 3 cột dễ chạm (giống form ghi nhanh)
   return [
-    mk('Ăn uống', '🍜', '#ff9f0a', 'expense', 1),
-    mk('Di chuyển', '🚗', '#64d2ff', 'expense', 2),
-    mk('Nhà cửa', '🏠', '#bf5af2', 'expense', 3),
-    mk('Mua sắm', '🛍', '#ff375f', 'expense', 4),
-    mk('Hóa đơn', '📄', '#ac8e68', 'expense', 5),
-    mk('Sức khỏe', '💊', '#30d158', 'expense', 6),
-    mk('Giải trí', '🎮', '#5e5ce6', 'expense', 7),
-    mk('Giáo dục', '📚', '#0a84ff', 'expense', 8),
-    mk('Gia đình', '👨‍👩‍👧', '#ff6482', 'expense', 9),
-    mk('Khác', '⋯', '#8e8e93', 'expense', 99),
+    // Chi
+    mk('Ăn uống', '🍽', '#ff9f0a', 'expense', 1),
+    mk('Khác', '🤲', '#ff375f', 'expense', 2),
+    mk('Tiền điện', '💧', '#0a84ff', 'expense', 3),
+    mk('Xăng Xe', '🚂', '#ff9f0a', 'expense', 4),
+    mk('Nước Mạng', '📱', '#8e8e93', 'expense', 5),
+    mk('Tiền Chợ', '🏠', '#ac8e68', 'expense', 6),
+    mk('Mua Sắm', '🛒', '#ffd60a', 'expense', 7),
+    mk('Du Lịch', '✈️', '#ff9f0a', 'expense', 8),
+    // Thu
+    mk('Lương', '💰', '#30d158', 'income', 1),
+    mk('Thưởng', '🎁', '#bf5af2', 'income', 2),
+    mk('Bán hàng', '🧾', '#0a84ff', 'income', 3),
+    mk('Khác', '➕', '#8e8e93', 'income', 99),
   ]
 }
 

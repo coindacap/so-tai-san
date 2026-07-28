@@ -229,19 +229,33 @@ export function SpendHome({ privacy }: { privacy: boolean }) {
   )
 }
 
-/** Form ghi chi (chỉ chi, không thu) */
+const WEEKDAYS_VI = ['CN', 'Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7']
+
+function formatDayLabel(localInput: string): string {
+  const d = new Date(fromLocalInput(localInput))
+  if (Number.isNaN(d.getTime())) return localInput
+  const dd = String(d.getDate()).padStart(2, '0')
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const yyyy = d.getFullYear()
+  return `${dd}/${mm}/${yyyy} (${WEEKDAYS_VI[d.getDay()]})`
+}
+
+function shiftDayLocal(localInput: string, delta: number): string {
+  const d = new Date(fromLocalInput(localInput))
+  if (Number.isNaN(d.getTime())) return localInput
+  d.setDate(d.getDate() + delta)
+  return toLocalInput(d.toISOString())
+}
+
+/** Form ghi chi/thu — layout nhanh giống app sổ thu chi (lưới danh mục + nút cam) */
 export function SpendForm() {
   const setScreen = useStore((s) => s.setScreen)
   const showToast = useStore((s) => s.showToast)
   const addExpense = useStore((s) => s.addExpense)
   const categories = useStore((s) => s.expenseCategories)
   const linkDefault = useStore((s) => s.settings.expenseLinkCashDefault)
-  const updateSettings = useStore((s) => s.updateSettings)
 
-  const cats = categories
-    .filter((c) => c.kind === 'expense' && !c.archived)
-    .sort((a, b) => a.sortOrder - b.sortOrder)
-
+  const [kind, setKind] = useState<'expense' | 'income'>('expense')
   const [categoryId, setCategoryId] = useState('')
   const [amount, setAmount] = useState('')
   const [note, setNote] = useState('')
@@ -249,20 +263,33 @@ export function SpendForm() {
   const [linkCash, setLinkCash] = useState(linkDefault)
   const [busy, setBusy] = useState(false)
 
+  const cats = useMemo(
+    () =>
+      categories
+        .filter((c) => c.kind === kind && !c.archived)
+        .sort((a, b) => a.sortOrder - b.sortOrder),
+    [categories, kind],
+  )
+
   const firstCatId = cats[0]?.id || ''
+  // Đổi tab thu/chi (hoặc list đổi) → chọn lại danh mục đầu
   useEffect(() => {
     setCategoryId(firstCatId)
-  }, [firstCatId])
+  }, [kind, firstCatId])
 
   function submit() {
     const a = moneyNum(amount)
+    if (!(a > 0)) {
+      showToast('Nhập số tiền')
+      return
+    }
     if (!categoryId) {
       showToast('Chọn danh mục')
       return
     }
     setBusy(true)
     const res = addExpense({
-      kind: 'expense',
+      kind,
       categoryId,
       amount: a,
       spentAt: fromLocalInput(spentAt),
@@ -274,109 +301,177 @@ export function SpendForm() {
       showToast(res.error)
       return
     }
-    showToast('Đã ghi chi')
+    showToast(kind === 'expense' ? 'Đã ghi chi' : 'Đã ghi thu')
+    setAmount('')
+    setNote('')
     setScreen('spend')
   }
 
+  const isExpense = kind === 'expense'
+  const amountLabel = isExpense ? 'Tiền chi' : 'Tiền thu'
+  const ctaLabel = busy
+    ? 'Đang lưu…'
+    : isExpense
+      ? 'Nhập khoản chi'
+      : 'Nhập khoản thu'
+
   return (
-    <div className="scroll">
-      <div className="nav">
-        <button type="button" className="back" onClick={() => setScreen('spend')}>
-          ‹ Chi tiêu
+    <div className="scroll spend-form-page">
+      {/* Segment Tiền chi / Tiền thu */}
+      <div className="spend-form-top">
+        <div className="spend-kind-seg" role="tablist" aria-label="Loại">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={isExpense}
+            className={isExpense ? 'on' : ''}
+            onClick={() => setKind('expense')}
+          >
+            Tiền chi
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={!isExpense}
+            className={!isExpense ? 'on' : ''}
+            onClick={() => setKind('income')}
+          >
+            Tiền thu
+          </button>
+        </div>
+        <button
+          type="button"
+          className="spend-form-close"
+          aria-label="Đóng"
+          onClick={() => setScreen('spend')}
+        >
+          ✕
         </button>
       </div>
-      <div className="large-title" style={{ paddingTop: 4 }}>
-        <h1>Ghi chi</h1>
-      </div>
 
-      <div className="field">
-        <label>Số tiền (đ)</label>
-        <MoneyInput value={amount} onChange={setAmount} unit="đ" />
-      </div>
-
-      <div className="sec">
-        <h2>Danh mục</h2>
-      </div>
-      <div className="spend-cat-grid">
-        {cats.map((c) => (
+      {/* Ngày */}
+      <div className="spend-form-row">
+        <span className="spend-form-lab">Ngày</span>
+        <div className="spend-date-nav">
           <button
-            key={c.id}
             type="button"
-            className={`spend-cat-chip ${categoryId === c.id ? 'on' : ''}`}
-            onClick={() => setCategoryId(c.id)}
-            style={
-              categoryId === c.id
-                ? { borderColor: c.color, background: `${c.color}18` }
-                : undefined
-            }
+            aria-label="Ngày trước"
+            onClick={() => setSpentAt((v) => shiftDayLocal(v, -1))}
           >
-            <span className="ico">{c.icon}</span>
-            <span>{c.name}</span>
+            ‹
           </button>
-        ))}
+          <label className="spend-date-pill">
+            <span>{formatDayLabel(spentAt)}</span>
+            <input
+              type="datetime-local"
+              value={spentAt}
+              onChange={(e) => setSpentAt(e.target.value)}
+              aria-label="Chọn ngày giờ"
+            />
+          </label>
+          <button
+            type="button"
+            aria-label="Ngày sau"
+            onClick={() => setSpentAt((v) => shiftDayLocal(v, 1))}
+          >
+            ›
+          </button>
+        </div>
       </div>
 
-      <div className="field">
-        <label>Thời điểm</label>
+      {/* Ghi chú */}
+      <div className="spend-form-row">
+        <span className="spend-form-lab">Ghi chú</span>
         <input
-          type="datetime-local"
-          value={spentAt}
-          onChange={(e) => setSpentAt(e.target.value)}
-        />
-      </div>
-      <div className="field">
-        <label>Ghi chú</label>
-        <input
+          className="spend-form-input"
           value={note}
           onChange={(e) => setNote(e.target.value)}
-          placeholder="Tùy chọn"
+          placeholder="Chưa nhập vào"
         />
       </div>
 
-      <div className="card" style={{ margin: '12px 0' }}>
-        <div className="switch-row">
-          <div>
-            <div style={{ fontWeight: 650 }}>Trừ tiền mặt VND</div>
-            <div style={{ fontSize: 12, color: 'var(--muted)' }}>
-              Đồng bộ sổ tài sản (tùy chọn)
-            </div>
-          </div>
-          <button
-            type="button"
-            className={`toggle ${linkCash ? 'on' : ''}`}
-            onClick={() => setLinkCash((v) => !v)}
-            aria-label="Link cash"
+      {/* Số tiền */}
+      <div className="spend-form-row spend-amount-row">
+        <span className="spend-form-lab">{amountLabel}</span>
+        <div className="spend-amount-field">
+          <MoneyInput
+            value={amount}
+            onChange={setAmount}
+            unit="đ"
+            placeholder="0"
+            className="spend-amount-input"
           />
-        </div>
-        <div className="switch-row">
-          <div style={{ fontSize: 13, color: 'var(--muted)' }}>
-            Mặc định lần sau
-          </div>
-          <button
-            type="button"
-            className="link-btn"
-            onClick={() => {
-              updateSettings({ expenseLinkCashDefault: linkCash })
-              showToast(
-                linkCash
-                  ? 'Mặc định: trừ tiền mặt'
-                  : 'Mặc định: chỉ sổ chi tiêu',
-              )
-            }}
-          >
-            Lưu mặc định
-          </button>
         </div>
       </div>
 
-      <button
-        className="btn-primary"
-        type="button"
-        disabled={busy}
-        onClick={submit}
-      >
-        {busy ? 'Đang lưu…' : 'Lưu chi tiêu'}
-      </button>
+      {/* Danh mục — lưới 3 cột icon */}
+      <div className="spend-form-cat-head">Danh mục</div>
+      <div className="spend-cat-tiles">
+        {cats.map((c) => {
+          const on = categoryId === c.id
+          return (
+            <button
+              key={c.id}
+              type="button"
+              className={`spend-cat-tile ${on ? 'on' : ''}`}
+              onClick={() => setCategoryId(c.id)}
+              style={
+                on
+                  ? {
+                      borderColor: c.color,
+                      boxShadow: `0 0 0 1px ${c.color}`,
+                    }
+                  : undefined
+              }
+            >
+              <span className="tile-ico" style={{ color: c.color }}>
+                {c.icon}
+              </span>
+              <span className="tile-name">{c.name}</span>
+            </button>
+          )
+        })}
+        <button
+          type="button"
+          className="spend-cat-tile spend-cat-edit"
+          onClick={() => setScreen('spend-categories')}
+        >
+          <span className="tile-ico">＋</span>
+          <span className="tile-name">
+            Chỉnh sửa <span className="tile-chev">›</span>
+          </span>
+        </button>
+      </div>
+
+      {/* Link tiền mặt — gọn */}
+      <div className="spend-form-linkcash">
+        <div>
+          <div className="t">
+            {isExpense ? 'Trừ tiền mặt VND' : 'Cộng tiền mặt VND'}
+          </div>
+          <div className="d">Đồng bộ sổ tài sản (tùy chọn)</div>
+        </div>
+        <button
+          type="button"
+          className={`toggle ${linkCash ? 'on' : ''}`}
+          onClick={() => setLinkCash((v) => !v)}
+          aria-label="Link cash"
+        />
+      </div>
+
+      {/* Spacer cho sticky CTA */}
+      <div className="spend-form-cta-space" />
+
+      <div className="spend-form-cta-bar">
+        <button
+          type="button"
+          className="spend-form-cta"
+          disabled={busy}
+          onClick={submit}
+        >
+          {ctaLabel}
+        </button>
+      </div>
     </div>
   )
 }
@@ -505,8 +600,9 @@ export function SpendCategories() {
   const addExpenseCategory = useStore((s) => s.addExpenseCategory)
   const updateExpenseCategory = useStore((s) => s.updateExpenseCategory)
 
+  const [kind, setKind] = useState<'expense' | 'income'>('expense')
   const list = categories
-    .filter((c) => c.kind === 'expense' && !c.archived)
+    .filter((c) => c.kind === kind && !c.archived)
     .sort((a, b) => a.sortOrder - b.sortOrder)
 
   /** null = tạo mới; string = id đang sửa */
@@ -551,7 +647,7 @@ export function SpendCategories() {
       name,
       icon: icon || '🏷',
       color,
-      kind: 'expense',
+      kind,
     })
     if (!res.ok) showToast(res.error)
     else {
@@ -563,13 +659,40 @@ export function SpendCategories() {
   return (
     <div className="scroll">
       <div className="nav">
-        <button type="button" className="back" onClick={() => setScreen('spend')}>
-          ‹ Báo cáo
+        <button
+          type="button"
+          className="back"
+          onClick={() => setScreen('spend-form')}
+        >
+          ‹ Ghi chi
         </button>
       </div>
       <div className="large-title">
-        <h1>Danh mục chi</h1>
+        <h1>Danh mục</h1>
         <div className="sub">Chạm dòng để sửa · chọn icon bên dưới</div>
+      </div>
+
+      <div className="spend-kind-seg" style={{ margin: '0 0 14px' }}>
+        <button
+          type="button"
+          className={kind === 'expense' ? 'on' : ''}
+          onClick={() => {
+            setKind('expense')
+            openCreate()
+          }}
+        >
+          Tiền chi
+        </button>
+        <button
+          type="button"
+          className={kind === 'income' ? 'on' : ''}
+          onClick={() => {
+            setKind('income')
+            openCreate()
+          }}
+        >
+          Tiền thu
+        </button>
       </div>
 
       <div className="group">
@@ -594,6 +717,11 @@ export function SpendCategories() {
             <span className="chev">›</span>
           </button>
         ))}
+        {list.length === 0 && (
+          <div className="row" style={{ color: 'var(--muted)' }}>
+            Chưa có danh mục
+          </div>
+        )}
       </div>
 
       <div className="sec">
