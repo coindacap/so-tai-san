@@ -1,11 +1,11 @@
 {
   "name": "Sổ Tài Sản",
   "short_name": "Tài sản",
-  "description": "Quản lý nhẫn 9999, USDT, coin — offline trên máy bạn",
+  "description": "Quản lý nhẫn 9999, USDT, coin, dùng offline trên máy bạn",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
-  "background_color": "#F2F2F7",
+  "background_color": "#F4EFF0",
   "theme_color": "#C41E3A",
   "orientation": "portrait",
   "lang": "vi",
