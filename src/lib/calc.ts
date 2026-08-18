@@ -48,19 +48,49 @@ export function computePosition(state: CalcState, assetId: string): PositionView
   const txs = sortedTxs(state.transactions.filter((t) => t.assetId === assetId))
   const quote = state.quotes[assetId]
 
+  // Tiền mặt VND: cộng/trừ đủ mọi leg (cùng qtyHoldAt).
+  // Không dùng AVG + clip out — nếu out trước in (timestamp chi tiêu trước bootstrap)
+  // thì clip sẽ bỏ out → số dư ảo trên danh mục, lệch màn Nạp VND.
+  if (asset.symbol === 'VND') {
+    let qty = 0
+    for (const tx of txs) {
+      qty += tx.side === 'in' ? tx.qty : -tx.qty
+    }
+    return {
+      asset,
+      qtyHold: qty,
+      avgCost: 1,
+      totalCostOpen: qty,
+      lastPrice: 1,
+      marketValueNative: qty,
+      marketValueVnd: qty,
+      costOpenVnd: qty,
+      unrealizedPnLVnd: 0,
+      unrealizedPnLNative: 0,
+      unrealizedPnLPct: 0,
+      realizedPnLVnd: 0,
+    }
+  }
+
   let qty = 0
   let totalCostNative = 0
   let totalCostVnd = 0
   let realizedPnLVnd = 0
 
   for (const tx of txs) {
+    if (tx.costBasisDeltaNative != null) {
+      const delta = Number(tx.costBasisDeltaNative)
+      if (Number.isFinite(delta)) {
+        totalCostNative += delta
+        totalCostVnd +=
+          asset.quoteCurrency === 'USDT' ? delta * usdtRate(state) : delta
+      }
+      continue
+    }
+
     if (tx.side === 'in') {
       qty += tx.qty
-      if (asset.symbol === 'VND') {
-        // cash face value
-        totalCostNative += tx.qty
-        totalCostVnd += tx.qty
-      } else if (asset.quoteCurrency === 'VND') {
+      if (asset.quoteCurrency === 'VND') {
         const cost = tx.qty * tx.pricePerUnit + (tx.fee || 0)
         totalCostNative += cost
         totalCostVnd += cost
@@ -78,9 +108,7 @@ export function computePosition(state: CalcState, assetId: string): PositionView
       const costRemovedVnd = sellQty * avgVnd
 
       let proceedsVnd = 0
-      if (asset.symbol === 'VND') {
-        proceedsVnd = sellQty
-      } else if (asset.quoteCurrency === 'VND') {
+      if (asset.quoteCurrency === 'VND') {
         proceedsVnd = sellQty * tx.pricePerUnit - (tx.fee || 0)
       } else {
         const usdtIn = tx.counterQty || sellQty * tx.pricePerUnit - (tx.fee || 0)
@@ -94,41 +122,36 @@ export function computePosition(state: CalcState, assetId: string): PositionView
     }
   }
 
-  if (asset.symbol === 'VND') {
-    return {
-      asset,
-      qtyHold: qty,
-      avgCost: 1,
-      totalCostOpen: qty,
-      lastPrice: 1,
-      marketValueNative: qty,
-      marketValueVnd: qty,
-      costOpenVnd: qty,
-      unrealizedPnLVnd: 0,
-      unrealizedPnLPct: 0,
-      realizedPnLVnd,
-    }
-  }
-
   const avgCost = qty > 0 ? totalCostNative / qty : null
   const lastPrice = markPrice(asset, quote)
   const marketValueNative =
     lastPrice != null && qty > 0 ? qty * lastPrice : qty > 0 ? null : 0
 
+  const rate = usdtRate(state)
   let marketValueVnd = 0
   if (qty <= 0) {
     marketValueVnd = 0
   } else if (asset.quoteCurrency === 'VND') {
     marketValueVnd = marketValueNative ?? totalCostVnd
   } else {
-    const rate = usdtRate(state)
     marketValueVnd = (marketValueNative ?? 0) * rate
   }
 
-  const costOpenVnd = Math.max(0, totalCostVnd)
+  // Coin (quote USDT): giá vốn / P/L theo USDT, VND chỉ quy đổi tỷ giá hiện tại.
+  // Không khóa VND lúc đổi USDT — tránh P/L coin bị kéo bởi OTC.
+  const costOpenVnd =
+    qty > 0 && asset.quoteCurrency === 'USDT'
+      ? Math.max(0, totalCostNative * rate)
+      : Math.max(0, totalCostVnd)
   const unrealizedPnLVnd = marketValueVnd - costOpenVnd
   const unrealizedPnLPct =
     costOpenVnd > 0 ? (unrealizedPnLVnd / costOpenVnd) * 100 : null
+  const unrealizedPnLNative =
+    qty <= 0
+      ? 0
+      : lastPrice != null && avgCost != null
+        ? (lastPrice - avgCost) * qty
+        : null
 
   return {
     asset,
@@ -140,6 +163,7 @@ export function computePosition(state: CalcState, assetId: string): PositionView
     marketValueVnd,
     costOpenVnd,
     unrealizedPnLVnd,
+    unrealizedPnLNative,
     unrealizedPnLPct,
     realizedPnLVnd,
   }

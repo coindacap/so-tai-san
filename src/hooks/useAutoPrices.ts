@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { fetchLivePrices, type LivePricesResult } from '../lib/prices'
 import { useStore } from '../store/useStore'
 import { nowIso } from '../lib/format'
+import type { PriceQuote } from '../types'
 
 const INTERVAL_MS = 3 * 60 * 1000 // 3 phút
 
@@ -36,22 +37,20 @@ export function useAutoPrices(enabled = true) {
         const usdt = state.assets.find((a) => a.symbol === 'USDT')
         const autoGold = !!state.settings.autoGoldPrice
         const applyGold = opts?.forceGold === true || autoGold
+        const next: PriceQuote[] = []
 
-        // USDT + coin: luôn auto
         if (usdt && live.usdtVnd && live.usdtVnd > 0) {
-          state.setQuote({
+          next.push({
             assetId: usdt.id,
             price: live.usdtVnd,
             currency: 'VND',
             label: live.usdtLabel || 'Binance',
             quotedAt: t,
           })
-          state.updateSettings({ defaultUsdtVnd: live.usdtVnd })
         }
 
-        // Vàng: chỉ khi bật autoGoldPrice hoặc forceGold
         if (applyGold && gold && live.goldBid && live.goldAsk) {
-          state.setQuote({
+          next.push({
             assetId: gold.id,
             price: live.goldBid,
             priceBid: live.goldBid,
@@ -65,7 +64,7 @@ export function useAutoPrices(enabled = true) {
         for (const c of cryptos) {
           const p = live.coins[c.symbol.toUpperCase()]
           if (p && p > 0) {
-            state.setQuote({
+            next.push({
               assetId: c.id,
               price: p,
               currency: 'USDT',
@@ -74,6 +73,8 @@ export function useAutoPrices(enabled = true) {
             })
           }
         }
+
+        if (next.length) state.applyLiveQuotes(next)
 
         setLast(live)
         const ok =

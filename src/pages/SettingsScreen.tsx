@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from 'react'
 import { useStore } from '../store/useStore'
 import { CloudSyncPanel } from '../components/CloudSync'
+import { AppIcon } from '../components/AppIcon'
 
 export function Settings() {
   const settings = useStore((s) => s.settings)
@@ -32,7 +33,7 @@ export function Settings() {
     }
     // Debug nhẹ: độ dài text dán (iOS hay cắt dở)
     if (trimmed.length < 20) {
-      showToast('Nội dung quá ngắn — copy lại TOÀN BỘ file JSON')
+      showToast('Nội dung quá ngắn, copy lại TOÀN BỘ file JSON')
       return false
     }
     try {
@@ -59,7 +60,7 @@ export function Settings() {
 
   async function onPickFile(file: File | null | undefined) {
     if (!file) {
-      showToast('Không chọn được file — thử Dán JSON')
+      showToast('Không chọn được file, thử Dán JSON')
       return
     }
     showToast(`Đang đọc: ${file.name}`)
@@ -135,26 +136,47 @@ export function Settings() {
 
   return (
     <div className="scroll">
-      <div className="large-title" style={{ paddingTop: 8 }}>
+      <div className="large-title">
         <h1>Cài đặt</h1>
-        <div className="sub">Tùy chọn & dữ liệu</div>
+        <div className="sub">Tùy chọn và dữ liệu</div>
       </div>
 
-      <div className="sec" style={{ marginTop: 4 }}>
+      <div className="sec sec-tight">
+        <h2>Quy tắc tiền mặt (tránh trừ hai lần)</h2>
+      </div>
+      <div className="card settings-guide">
+        <div className="settings-guide-row">
+          <span className="settings-guide-k">Nạp / rút VND</span>
+          <span className="settings-guide-v">Chỉ chuyển bank ↔ sổ</span>
+        </div>
+        <div className="settings-guide-row">
+          <span className="settings-guide-k">Chi tiêu</span>
+          <span className="settings-guide-v">Tab Chi tiêu · bật trừ TM nếu cần</span>
+        </div>
+        <div className="settings-guide-row">
+          <span className="settings-guide-k">USDT / coin / nhẫn</span>
+          <span className="settings-guide-v">Tab Tài sản → Giao dịch (+)</span>
+        </div>
+        <div className="settings-guide-row">
+          <span className="settings-guide-k">TK / cho vay</span>
+          <span className="settings-guide-v">Bật gắn TM → không nạp/rút tay thêm</span>
+        </div>
+      </div>
+
+      <div className="sec">
         <h2>Hiển thị</h2>
       </div>
       <div className="card">
         <div className="switch-row">
           <div>
-            <div style={{ fontWeight: 650 }}>Ẩn số</div>
-            <div style={{ fontSize: 12, color: 'var(--muted)' }}>
+            <div className="switch-title">Ẩn số</div>
+            <div className="switch-desc">
               Che số trên dashboard
             </div>
           </div>
           <button
-            className="btn-secondary"
-            style={{ width: 'auto', margin: 0, padding: '8px 14px', fontSize: 14 }}
-            onClick={() =>
+            className="btn-secondary btn-compact"
+          onClick={() =>
               updateSettings({ privacyMode: !settings.privacyMode })
             }
           >
@@ -163,37 +185,54 @@ export function Settings() {
         </div>
         <div className="switch-row">
           <div>
-            <div style={{ fontWeight: 650 }}>Giá vốn</div>
-            <div style={{ fontSize: 12, color: 'var(--muted)' }}>
+            <div className="switch-title">Giá vốn</div>
+            <div className="switch-desc">
               Phương pháp tính
             </div>
           </div>
-          <span style={{ fontWeight: 700 }}>AVG</span>
+          <span className="switch-value">AVG</span>
         </div>
         <div className="switch-row">
           <div>
-            <div style={{ fontWeight: 650 }}>Coin mua bằng USDT</div>
-            <div style={{ fontSize: 12, color: 'var(--muted)' }}>
+            <div className="switch-title">Coin mua bằng USDT</div>
+            <div className="switch-desc">
               VND → USDT → Coin
             </div>
           </div>
-          <span style={{ fontWeight: 700, color: 'var(--green-ink)' }}>Bật</span>
+          <span className="switch-value is-on">Bật</span>
         </div>
         <div className="switch-row">
           <div>
-            <div style={{ fontWeight: 650 }}>Auto giá vàng</div>
-            <div style={{ fontSize: 12, color: 'var(--muted)' }}>
-              Ước XAU → đ/chỉ (mặc định tắt, giữ giá tiệm)
+            <div className="switch-title">Auto giá vàng</div>
+            <div className="switch-desc">
+              Ước XAU → /chỉ (mặc định tắt, giữ giá tiệm)
             </div>
           </div>
           <button
-            className="btn-secondary"
-            style={{ width: 'auto', margin: 0, padding: '8px 14px', fontSize: 14 }}
-            onClick={() =>
+            className="btn-secondary btn-compact"
+          onClick={() =>
               updateSettings({ autoGoldPrice: !settings.autoGoldPrice })
             }
           >
             {settings.autoGoldPrice ? 'Đang bật' : 'Tắt'}
+          </button>
+        </div>
+        <div className="switch-row">
+          <div>
+            <div className="switch-title">Chi tiêu mặc định trừ TM</div>
+            <div className="switch-desc">
+              Form chi/thu bật “trừ/cộng tiền mặt” sẵn
+            </div>
+          </div>
+          <button
+            className="btn-secondary btn-compact"
+            onClick={() =>
+              updateSettings({
+                expenseLinkCashDefault: !settings.expenseLinkCashDefault,
+              })
+            }
+          >
+            {settings.expenseLinkCashDefault ? 'Đang bật' : 'Tắt'}
           </button>
         </div>
       </div>
@@ -221,7 +260,9 @@ export function Settings() {
             <div className="t">Export backup</div>
             <div className="d">Chia sẻ / copy file JSON</div>
           </div>
-          <span className="chev">›</span>
+          <span className="chev">
+            <AppIcon name="chevron-right" size={18} />
+          </span>
         </button>
         <label className="row file-label-row">
           <div className="body">
@@ -230,7 +271,9 @@ export function Settings() {
             </div>
             <div className="d">Sổ Tài Sản hoặc QuanLyTaiChinh</div>
           </div>
-          <span className="chev">›</span>
+          <span className="chev">
+            <AppIcon name="chevron-right" size={18} />
+          </span>
           <input
             type="file"
             accept=".json,application/json,text/plain,text/*,*/*"
@@ -251,7 +294,12 @@ export function Settings() {
             <div className="t">Dán JSON</div>
             <div className="d">Copy file → dán vào đây</div>
           </div>
-          <span className="chev">{pasteOpen ? '˄' : '›'}</span>
+          <span className="chev">
+            <AppIcon
+              name={pasteOpen ? 'chevron-up' : 'chevron-right'}
+              size={18}
+            />
+          </span>
         </button>
         <button
           className="row"
@@ -262,7 +310,7 @@ export function Settings() {
             showToast(
               id
                 ? 'Đã chụp bản an toàn trên máy'
-                : 'Sổ trống — không cần chụp',
+                : 'Sổ trống, không cần chụp',
             )
           }}
         >
@@ -270,7 +318,9 @@ export function Settings() {
             <div className="t">Chụp bản an toàn ngay</div>
             <div className="d">Giữ trên máy (tối đa 5 bản)</div>
           </div>
-          <span className="chev">›</span>
+          <span className="chev">
+            <AppIcon name="chevron-right" size={18} />
+          </span>
         </button>
         <button
           className="row"
@@ -286,37 +336,35 @@ export function Settings() {
               Tự chụp trước import / kéo cloud / xóa sổ
             </div>
           </div>
-          <span className="chev">{safetyOpen ? '˄' : '›'}</span>
+          <span className="chev">
+            <AppIcon
+              name={safetyOpen ? 'chevron-up' : 'chevron-right'}
+              size={18}
+            />
+          </span>
         </button>
       </div>
 
       {safetyOpen && (
-        <div className="card" style={{ marginTop: 10 }}>
+        <div className="card mt-sm">
           {safetyList.length === 0 ? (
-            <div style={{ padding: 14, color: 'var(--muted)', fontSize: 13 }}>
+            <div className="note-box text-muted">
               Chưa có bản an toàn. Sẽ tự tạo khi import, kéo cloud hoặc xóa sổ.
             </div>
           ) : (
             safetyList.map((b) => (
               <div key={b.id} className="switch-row">
-                <div style={{ minWidth: 0, flex: 1 }}>
-                  <div style={{ fontWeight: 650, fontSize: 14 }}>{b.label}</div>
-                  <div style={{ fontSize: 12, color: 'var(--muted)' }}>
+                <div className="flex-1-min">
+                  <div className="switch-title text-sm">{b.label}</div>
+                  <div className="switch-desc">
                     {new Date(b.createdAt).toLocaleString('vi-VN')}
                     {' · '}
                     {b.tx} GD · {b.savings} TK · {b.loans} vay
                   </div>
                 </div>
                 <button
-                  className="btn-secondary"
+                  className="btn-secondary btn-compact"
                   type="button"
-                  style={{
-                    width: 'auto',
-                    margin: 0,
-                    padding: '8px 12px',
-                    fontSize: 13,
-                    flexShrink: 0,
-                  }}
                   onClick={() => {
                     if (
                       !confirm(
@@ -344,7 +392,7 @@ export function Settings() {
       )}
 
       {pasteOpen && (
-        <div className="card" style={{ marginTop: 10 }}>
+        <div className="card mt-sm">
           <div className="field">
             <label>Nội dung JSON</label>
             <textarea
@@ -358,7 +406,7 @@ export function Settings() {
               spellCheck={false}
             />
           </div>
-          <div style={{ padding: '0 14px 14px', display: 'grid', gap: 8 }}>
+          <div className="sheet-stack">
             <button
               className="btn-primary"
               type="button"
@@ -374,11 +422,9 @@ export function Settings() {
             >
               {importing ? 'Đang import…' : 'Import'}
             </button>
-            <button
-              className="btn-secondary"
-              type="button"
-              style={{ margin: 0 }}
-              onClick={async () => {
+            <button className="btn-secondary"
+ type="button"
+ onClick={async () => {
                 try {
                   const t = await navigator.clipboard.readText()
                   if (!t) {
@@ -406,13 +452,17 @@ export function Settings() {
           <div className="body">
             <div className="t">Danh mục vàng / coin</div>
           </div>
-          <span className="chev">›</span>
+          <span className="chev">
+            <AppIcon name="chevron-right" size={18} />
+          </span>
         </button>
         <button className="row" type="button" onClick={() => setScreen('history')}>
           <div className="body">
             <div className="t">Lịch sử giao dịch</div>
           </div>
-          <span className="chev">›</span>
+          <span className="chev">
+            <AppIcon name="chevron-right" size={18} />
+          </span>
         </button>
         <button
           className="row"
@@ -422,7 +472,9 @@ export function Settings() {
           <div className="body">
             <div className="t">Cập nhật giá thị trường</div>
           </div>
-          <span className="chev">›</span>
+          <span className="chev">
+            <AppIcon name="chevron-right" size={18} />
+          </span>
         </button>
       </div>
 
@@ -446,7 +498,7 @@ export function Settings() {
           }}
         >
           <div className="body">
-            <div className="t" style={{ color: 'var(--down)' }}>
+            <div className="t text-loss">
               Xoá toàn bộ dữ liệu
             </div>
             <div className="d">Có bản an toàn trên máy trước khi xóa</div>
@@ -458,5 +510,4 @@ export function Settings() {
 }
 
 /* ========== TIẾT KIỆM ========== */
-
 

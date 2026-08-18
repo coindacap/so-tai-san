@@ -40,6 +40,21 @@ export function cloudReady(): boolean {
   return isCloudConfigured()
 }
 
+export function onCloudSignedIn(
+  cb: (user: CloudUser) => void,
+): () => void {
+  const sb = getSupabase()
+  if (!sb) return () => {}
+  const {
+    data: { subscription },
+  } = sb.auth.onAuthStateChange((event, session) => {
+    if (event === 'SIGNED_IN' && session?.user) {
+      cb({ id: session.user.id, email: session.user.email ?? null })
+    }
+  })
+  return () => subscription.unsubscribe()
+}
+
 export async function getCloudUser(): Promise<CloudUser | null> {
   const sb = getSupabase()
   if (!sb) return null
@@ -205,6 +220,8 @@ function mapAuthError(msg: string): string {
   const m = msg.toLowerCase()
   if (m.includes('invalid login') || m.includes('invalid credentials'))
     return 'Sai email hoặc mật khẩu'
+  if (m.includes('expired') || m.includes('token'))
+    return 'Link đặt lại mật khẩu hết hạn — gửi lại từ tab Quên MK'
   if (m.includes('email not confirmed'))
     return 'Email chưa xác nhận — kiểm tra hộp thư hoặc thử Quên MK'
   if (m.includes('user already registered') || m.includes('already been registered'))
@@ -280,7 +297,7 @@ function ts(iso: string | null | undefined): number {
 export function snapshotRichness(s: {
   transactions?: unknown[]
   savings?: unknown[]
-  loans?: unknown[]
+  loans?: unknown[] | { payments?: unknown[] }[]
   assets?: unknown[]
   expenses?: unknown[]
 }): number {
@@ -289,8 +306,19 @@ export function snapshotRichness(s: {
   const loan = s.loans?.length ?? 0
   const assets = s.assets?.length ?? 0
   const exp = s.expenses?.length ?? 0
+  // Lịch sử thu/sửa trên từng khoản vay cũng tính “giàu” — tránh cloud
+  // bản cũ (0 payments) đè local vừa thu gốc / đóng lãi.
+  const loanPays = (s.loans || []).reduce((n: number, l) => {
+    const pays = (l as { payments?: unknown[] })?.payments
+    return n + (Array.isArray(pays) ? pays.length : 0)
+  }, 0)
   return (
-    tx * 10 + sav * 8 + loan * 8 + exp * 6 + Math.max(0, assets - 3) * 2
+    tx * 10 +
+    sav * 8 +
+    loan * 8 +
+    exp * 6 +
+    loanPays * 3 +
+    Math.max(0, assets - 3) * 2
   )
 }
 
@@ -303,7 +331,14 @@ export type ReconcileResult = {
 
 /**
  * Đồng bộ 2 chiều Mac ↔ iPhone cùng 1 email.
- * Ưu tiên sổ “giàu” hơn; không auto-đẩy sổ trống đè cloud đầy.
+ *
+ * Ưu tiên:
+ * 1. Manual pull → luôn lấy cloud
+ * 2. Local dirty / push tay / login (có data) → đẩy local
+ *    (kể cả khi xóa làm sổ “nghèo” hơn — tránh cloud kéo hoàn giao dịch đã xóa)
+ * 3. Máy trống vs cloud đầy → kéo cloud (chặn đè rỗng)
+ * 4. Remote giàu hơn / mới hơn (local sạch) → kéo
+ * 5. Local giàu hơn → đẩy
  */
 export async function reconcileCloud(opts: {
   getLocal: () => CloudSnapshot
@@ -358,8 +393,36 @@ export async function reconcileCloud(opts: {
     }
   }
 
-  // --- Remote giàu hơn local → luôn lấy remote (trừ khi user bấm đẩy tay) ---
-  if (opts.mode !== 'manual-push' && remoteR > localR) {
+  // Không đẩy sổ trống đè cloud đầy (auto / login)
+  const emptyLocalGuard =
+    localR === 0 && remoteR > 0 && opts.mode !== 'manual-push'
+
+  // --- Local dirty / đẩy tay / login: ưu tiên sổ máy này ---
+  // Trước: remoteR > localR luôn kéo → xóa chi tiêu/giao dịch bị cloud “hoàn lại”.
+  if (
+    (meta.dirty || opts.mode === 'manual-push' || opts.mode === 'login') &&
+    !emptyLocalGuard
+  ) {
+    const res = await pushSnapshot(local)
+    if (!res.ok) return { action: 'error', message: res.error }
+    writeCloudMeta({
+      dirty: false,
+      lastSyncedAt: res.updatedAt,
+      lastRemoteUpdatedAt: res.updatedAt,
+    })
+    return {
+      action: 'pushed',
+      message:
+        opts.mode === 'login'
+          ? 'Đã đồng bộ sổ lên cloud'
+          : localR < remoteR
+            ? 'Đã đẩy thay đổi (kể cả xóa) lên cloud'
+            : 'Đã đẩy thay đổi lên cloud',
+    }
+  }
+
+  // --- Máy trống + cloud có data → kéo ---
+  if (emptyLocalGuard) {
     opts.applyRemote(remote.data)
     writeCloudMeta({
       dirty: false,
@@ -369,13 +432,27 @@ export async function reconcileCloud(opts: {
     return {
       action: 'pulled',
       message:
-        localR === 0
-          ? 'Đã tải sổ đầy từ cloud về máy này'
-          : 'Máy khác có sổ đầy hơn — đã cập nhật từ cloud',
+        meta.dirty
+          ? 'Chặn đẩy sổ trống — đã tải lại từ cloud'
+          : 'Đã tải sổ đầy từ cloud về máy này',
     }
   }
 
-  // --- Local giàu hơn remote → đẩy lên ---
+  // --- Remote giàu hơn + local sạch → kéo ---
+  if (remoteR > localR) {
+    opts.applyRemote(remote.data)
+    writeCloudMeta({
+      dirty: false,
+      lastSyncedAt: remote.updated_at,
+      lastRemoteUpdatedAt: remote.updated_at,
+    })
+    return {
+      action: 'pulled',
+      message: 'Máy khác có sổ đầy hơn — đã cập nhật từ cloud',
+    }
+  }
+
+  // --- Local giàu hơn remote → đẩy ---
   if (localR > remoteR) {
     const res = await pushSnapshot(local)
     if (!res.ok) return { action: 'error', message: res.error }
@@ -390,24 +467,8 @@ export async function reconcileCloud(opts: {
     }
   }
 
-  // --- Độ giàu tương đương: theo thời gian ---
-  // Cloud mới hơn những gì máy này biết → kéo
-  if (
-    opts.mode !== 'manual-push' &&
-    remoteT > lastRemoteKnown &&
-    remoteT > lastSync
-  ) {
-    // Tránh kéo đè nếu local dirty và cùng richness nhưng user vừa sửa
-    if (meta.dirty && opts.mode === 'auto' && localR >= remoteR) {
-      const res = await pushSnapshot(local)
-      if (!res.ok) return { action: 'error', message: res.error }
-      writeCloudMeta({
-        dirty: false,
-        lastSyncedAt: res.updatedAt,
-        lastRemoteUpdatedAt: res.updatedAt,
-      })
-      return { action: 'pushed', message: 'Đã đẩy thay đổi trên máy này lên cloud' }
-    }
+  // --- Cùng độ giàu: cloud mới hơn (máy khác vừa sửa) → kéo ---
+  if (remoteT > lastRemoteKnown && remoteT > lastSync) {
     opts.applyRemote(remote.data)
     writeCloudMeta({
       dirty: false,
@@ -417,37 +478,6 @@ export async function reconcileCloud(opts: {
     return {
       action: 'pulled',
       message: 'Đã cập nhật từ cloud (máy khác vừa sửa)',
-    }
-  }
-
-  // Local dirty → đẩy (đã biết local không nghèo hơn remote)
-  if (meta.dirty || opts.mode === 'manual-push' || opts.mode === 'login') {
-    // Chặn auto-push sổ rỗng
-    if (opts.mode === 'auto' && localR === 0 && remoteR > 0) {
-      opts.applyRemote(remote.data)
-      writeCloudMeta({
-        dirty: false,
-        lastSyncedAt: remote.updated_at,
-        lastRemoteUpdatedAt: remote.updated_at,
-      })
-      return {
-        action: 'pulled',
-        message: 'Chặn đẩy sổ trống — đã tải lại từ cloud',
-      }
-    }
-    const res = await pushSnapshot(local)
-    if (!res.ok) return { action: 'error', message: res.error }
-    writeCloudMeta({
-      dirty: false,
-      lastSyncedAt: res.updatedAt,
-      lastRemoteUpdatedAt: res.updatedAt,
-    })
-    return {
-      action: 'pushed',
-      message:
-        opts.mode === 'login'
-          ? 'Đã đồng bộ sổ lên cloud'
-          : 'Đã đẩy thay đổi lên cloud',
     }
   }
 

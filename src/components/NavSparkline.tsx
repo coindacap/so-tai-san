@@ -11,8 +11,9 @@ type Props = {
 }
 
 /**
- * Sparkline SVG thuần — không lib.
+ * Sparkline SVG thuần, không lib.
  * Cần ≥ 2 điểm để vẽ đường; 1 điểm → chấm.
+ * Màu gain/loss lấy từ token design.md (CSS class).
  */
 export function NavSparkline({
   points,
@@ -39,8 +40,9 @@ export function NavSparkline({
         height - padY - ((p.value - min) / span) * (height - padY * 2)
       return { x, y, ...p }
     })
-    const line = coords.map((c, i) => `${i === 0 ? 'M' : 'L'}${c.x.toFixed(1)},${c.y.toFixed(1)}`).join(' ')
-    // area fill under line
+    const line = coords
+      .map((c, i) => `${i === 0 ? 'M' : 'L'}${c.x.toFixed(1)},${c.y.toFixed(1)}`)
+      .join(' ')
     const last = coords[coords.length - 1]!
     const first = coords[0]!
     const area = `${line} L${last.x.toFixed(1)},${height} L${first.x.toFixed(1)},${height} Z`
@@ -51,15 +53,13 @@ export function NavSparkline({
   if (!geo || points.length === 0) {
     return (
       <div className={`nav-spark empty ${className}`}>
-        <span>Chưa có lịch sử NAV — mở app vài ngày sẽ hiện biểu đồ</span>
+        <span>Chưa có lịch sử NAV, mở app vài ngày sẽ hiện biểu đồ</span>
       </div>
     )
   }
 
-  const stroke = geo.up ? '#34d399' : '#f87171'
-  const fill = geo.up
-    ? 'url(#navSparkUp)'
-    : 'url(#navSparkDown)'
+  const dir = geo.up ? 'up' : 'down'
+  const last = geo.coords[geo.coords.length - 1]!
 
   return (
     <div
@@ -77,23 +77,12 @@ export function NavSparkline({
         preserveAspectRatio="none"
         aria-hidden
       >
-        <defs>
-          <linearGradient id="navSparkUp" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#34d399" stopOpacity="0.35" />
-            <stop offset="100%" stopColor="#34d399" stopOpacity="0" />
-          </linearGradient>
-          <linearGradient id="navSparkDown" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#f87171" stopOpacity="0.35" />
-            <stop offset="100%" stopColor="#f87171" stopOpacity="0" />
-          </linearGradient>
-        </defs>
         {points.length >= 2 && (
           <>
-            <path d={geo.area} fill={fill} />
+            <path d={geo.area} className={`area-${dir}`} />
             <path
               d={geo.line}
-              fill="none"
-              stroke={stroke}
+              className={`line-${dir}`}
               strokeWidth="2"
               strokeLinecap="round"
               strokeLinejoin="round"
@@ -101,12 +90,11 @@ export function NavSparkline({
             />
           </>
         )}
-        {/* last point dot */}
         <circle
-          cx={geo.coords[geo.coords.length - 1]!.x}
-          cy={geo.coords[geo.coords.length - 1]!.y}
+          className={`dot-${dir}`}
+          cx={last.x}
+          cy={last.y}
           r="3"
-          fill={stroke}
         />
       </svg>
     </div>

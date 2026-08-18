@@ -1,4 +1,6 @@
+import { useId } from 'react'
 import { formatMoneyInput } from '../lib/format'
+import { AppIcon } from './AppIcon'
 
 type Props = {
   value: string | number
@@ -12,6 +14,12 @@ type Props = {
    */
   decimal?: boolean
   maxFraction?: number
+  disabled?: boolean
+  state?: 'default' | 'loading' | 'error' | 'success'
+  ariaLabel?: string
+  inputId?: string
+  helperText?: string
+  errorMessage?: string
 }
 
 /**
@@ -51,16 +59,43 @@ function sanitizeDecimal(input: string, maxFraction: number): string {
 export function MoneyInput({
   value,
   onChange,
-  unit = 'đ',
+  unit = '',
   placeholder = '0',
   className = '',
   decimal = false,
   maxFraction = 8,
+  disabled = false,
+  state = 'default',
+  ariaLabel = 'Số tiền',
+  inputId,
+  helperText,
+  errorMessage,
 }: Props) {
+  const generatedId = useId()
+  const id = inputId || `money-${generatedId.replace(/:/g, '')}`
+  const message = state === 'error' ? errorMessage : helperText
+  const messageId = message ? `${id}-message` : undefined
+  const stateIcon =
+    state === 'loading' ? 'loader' : state === 'error' ? 'warning' : 'check'
+  const stateMark =
+    state === 'default' ? null : (
+      <span className="money-input__state">
+        <AppIcon
+          name={stateIcon}
+          size={17}
+          className={state === 'loading' ? 'spin' : undefined}
+        />
+      </span>
+    )
+
   if (decimal) {
     const raw = String(value ?? '')
     return (
-      <div className={`inline money-input ${className}`}>
+      <div
+        className={`inline money-input ${className}`}
+        data-state={state}
+        aria-busy={state === 'loading'}
+      >
         <input
           className="num"
           type="text"
@@ -70,6 +105,11 @@ export function MoneyInput({
           autoCorrect="off"
           autoCapitalize="off"
           spellCheck={false}
+          disabled={disabled}
+          id={id}
+          aria-label={ariaLabel}
+          aria-invalid={state === 'error'}
+          aria-describedby={messageId}
           placeholder={placeholder}
           value={raw}
           onChange={(e) => {
@@ -77,13 +117,27 @@ export function MoneyInput({
           }}
         />
         {unit ? <span className="unit">{unit}</span> : null}
+        {stateMark}
+        {message ? (
+          <span
+            className="money-input__message"
+            id={messageId}
+            role={state === 'error' ? 'alert' : undefined}
+          >
+            {message}
+          </span>
+        ) : null}
       </div>
     )
   }
 
   const display = formatMoneyInput(value)
   return (
-    <div className={`inline money-input ${className}`}>
+    <div
+      className={`inline money-input ${className}`}
+      data-state={state}
+      aria-busy={state === 'loading'}
+    >
       <input
         className="num"
         type="text"
@@ -93,6 +147,11 @@ export function MoneyInput({
         autoCorrect="off"
         autoCapitalize="off"
         spellCheck={false}
+        disabled={disabled}
+        id={id}
+        aria-label={ariaLabel}
+        aria-invalid={state === 'error'}
+        aria-describedby={messageId}
         placeholder={placeholder}
         value={display}
         onChange={(e) => {
@@ -103,8 +162,17 @@ export function MoneyInput({
         }}
       />
       {unit ? <span className="unit">{unit}</span> : null}
+      {stateMark}
+      {message ? (
+        <span
+          className="money-input__message"
+          id={messageId}
+          role={state === 'error' ? 'alert' : undefined}
+        >
+          {message}
+        </span>
+      ) : null}
     </div>
   )
 }
-
 

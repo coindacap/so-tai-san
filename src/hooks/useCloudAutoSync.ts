@@ -49,7 +49,6 @@ export function useCloudAutoSync(enabled: boolean) {
       if (
         state.assets !== prev.assets ||
         state.transactions !== prev.transactions ||
-        state.quotes !== prev.quotes ||
         state.settings !== prev.settings ||
         state.savings !== prev.savings ||
         state.loans !== prev.loans ||

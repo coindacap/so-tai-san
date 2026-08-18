@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
+import { createJSONStorage, persist } from 'zustand/middleware'
 import type {
   AppSettings,
   AppState,
@@ -14,11 +14,12 @@ import type {
   NavFrame,
   PriceQuote,
   SavingsAccount,
+  SavingsEvent,
   Screen,
   Transaction,
 } from '../types'
 import { nowIso, uid } from '../lib/format'
-import { getBySymbol, qtyHoldAt, usdtAvgCost } from '../lib/calc'
+import { computePosition, getBySymbol, qtyHoldAt, usdtAvgCost } from '../lib/calc'
 import { seedExpenseCategories } from '../lib/expense'
 import {
   convertTaiChinhBackup,
@@ -32,8 +33,43 @@ import {
   type SafetyReason,
 } from '../lib/localBackup'
 import { pushAppHistory, syncBrowserBack } from '../lib/appHistory'
+import { debouncedPersistStorage } from '../lib/persistStorage'
 
 const STORAGE_KEY = 'so-tai-san-v1'
+
+/** Chuẩn hóa khoản vay sau load/cloud — payments luôn là mảng (tránh mất lịch sử / crash). */
+function normalizeLoan(l: Loan): Loan {
+  return {
+    ...l,
+    interestPaid: l.interestPaid ?? 0,
+    deletedAt: l.deletedAt ?? null,
+    interestType: l.interestType ?? ('annual' as const),
+    interestValue: l.interestValue ?? l.rateAnnual ?? 0,
+    payments: Array.isArray(l.payments) ? l.payments : [],
+  }
+}
+
+function normalizeLoans(list: Loan[] | undefined | null): Loan[] {
+  if (!Array.isArray(list)) return []
+  return list.map((l) => normalizeLoan(l as Loan))
+}
+
+function normalizeSavings(s: SavingsAccount): SavingsAccount {
+  return {
+    ...s,
+    history: Array.isArray(s.history) ? s.history : [],
+    closedPrincipal: s.closedPrincipal,
+    closedAmountBack: s.closedAmountBack,
+    closedAt: s.closedAt ?? null,
+  }
+}
+
+function normalizeSavingsList(
+  list: SavingsAccount[] | undefined | null,
+): SavingsAccount[] {
+  if (!Array.isArray(list)) return []
+  return list.map((x) => normalizeSavings(x as SavingsAccount))
+}
 
 function seedAssets(): Asset[] {
   const t = nowIso()
@@ -43,7 +79,7 @@ function seedAssets(): Asset[] {
       assetClass: 'cash',
       symbol: 'VND',
       name: 'Tiền mặt VND',
-      unit: 'đ',
+      unit: 'VND',
       quoteCurrency: 'VND',
       isBridge: false,
       isSeed: true,
@@ -146,6 +182,7 @@ interface Actions {
   clearToast: () => void
 
   setQuote: (q: PriceQuote) => void
+  applyLiveQuotes: (quotes: PriceQuote[]) => void
   updateSettings: (p: Partial<AppSettings>) => void
 
   /** Onboarding: set initial cash / gold / usdt holdings */
@@ -204,6 +241,14 @@ interface Actions {
     venue?: string
     note?: string
     deductUsdt?: boolean
+    externalId?: string
+  }) => { ok: true } | { ok: false; error: string }
+
+  /** Sửa tổng giá vốn coin đang hold, không đổi số lượng coin / USDT */
+  adjustCoinCostBasis: (input: {
+    assetId: string
+    avgCostUsdt: number
+    note?: string
   }) => { ok: true } | { ok: false; error: string }
 
   /** Điều chỉnh số dư USDT (cộng/trừ) không qua mua coin */
@@ -213,6 +258,8 @@ interface Actions {
     costPerUsdtVnd?: number
     tradedAt: string
     note?: string
+    venue?: string
+    externalId?: string
   }) => { ok: true } | { ok: false; error: string }
 
   /** Sell crypto for USDT */
@@ -224,6 +271,7 @@ interface Actions {
     tradedAt: string
     venue?: string
     note?: string
+    externalId?: string
   }) => { ok: true } | { ok: false; error: string }
 
   ensureCryptoAsset: (symbol: string, name?: string) => string
@@ -254,6 +302,23 @@ interface Actions {
     linkedCash: boolean
     tradedAt: string
   }) => { ok: true } | { ok: false; error: string }
+
+  updateSavings: (
+    id: string,
+    patch: Partial<
+      Pick<
+        SavingsAccount,
+        | 'name'
+        | 'bank'
+        | 'principal'
+        | 'rateAnnual'
+        | 'startDate'
+        | 'maturityDate'
+        | 'termMonths'
+        | 'note'
+      >
+    >,
+  ) => { ok: true } | { ok: false; error: string }
 
   deleteSavings: (id: string) => void
 
@@ -445,6 +510,15 @@ function pairTx(
   ]
 }
 
+/** Giữ giá Binance — không đè mark-to-market bằng giá lệnh vừa ghi */
+function keepLiveCoinQuote(
+  existing: PriceQuote | undefined,
+  fallback: PriceQuote,
+): PriceQuote {
+  if (existing?.label === 'Binance' && existing.price > 0) return existing
+  return fallback
+}
+
 /** Ids cùng cặp: pairId hoặc heuristic (giao dịch cũ không có pairId) */
 function resolvePairIds(txs: Transaction[], id: string): string[] {
   const tx = txs.find((t) => t.id === id)
@@ -534,7 +608,8 @@ export const useStore = create<Store>()(
             went = true
           } else if (
             cur.screen === 'savings-detail' ||
-            cur.screen === 'savings-form'
+            cur.screen === 'savings-form' ||
+            cur.screen === 'savings-edit'
           ) {
             set({ screen: 'savings', detailAssetId: null })
             went = true
@@ -552,10 +627,13 @@ export const useStore = create<Store>()(
             cur.screen === 'sell-gold' ||
             cur.screen === 'usdt' ||
             cur.screen === 'buy-coin' ||
+            cur.screen === 'adjust-coin-cost' ||
             cur.screen === 'sell-coin' ||
             cur.screen === 'adjust-usdt' ||
             cur.screen === 'prices' ||
-            cur.screen === 'cash'
+            cur.screen === 'cash' ||
+            cur.screen === 'history' ||
+            cur.screen === 'assets'
           ) {
             set({ screen: 'home', detailAssetId: null })
             went = true
@@ -597,6 +675,28 @@ export const useStore = create<Store>()(
         set((s) => ({
           quotes: { ...s.quotes, [q.assetId]: q },
         })),
+
+      applyLiveQuotes: (incoming) =>
+        set((s) => {
+          if (!incoming.length) return s
+          let changed = false
+          const quotes = { ...s.quotes }
+          for (const q of incoming) {
+            const prev = quotes[q.assetId]
+            if (
+              prev &&
+              prev.price === q.price &&
+              prev.priceBid === q.priceBid &&
+              prev.priceAsk === q.priceAsk &&
+              prev.label === q.label
+            ) {
+              continue
+            }
+            quotes[q.assetId] = q
+            changed = true
+          }
+          return changed ? { quotes } : s
+        }),
 
       updateSettings: (p) =>
         set((s) => ({ settings: { ...s.settings, ...p } })),
@@ -708,7 +808,7 @@ export const useStore = create<Store>()(
           if (hold < amount)
             return {
               ok: false,
-              error: `Không đủ tiền mặt (còn ${Math.round(hold).toLocaleString('vi-VN')}đ)`,
+              error: `Không đủ tiền mặt (còn ${Math.round(hold).toLocaleString('vi-VN')})`,
             }
         }
 
@@ -753,7 +853,7 @@ export const useStore = create<Store>()(
           if (hold < vndAmount)
             return {
               ok: false,
-              error: `Không đủ VND (còn ${Math.round(hold).toLocaleString('vi-VN')}đ)`,
+              error: `Không đủ VND (còn ${Math.round(hold).toLocaleString('vi-VN')})`,
             }
           const txs = pairTx(
             {
@@ -866,7 +966,7 @@ export const useStore = create<Store>()(
           if (hold < money)
             return {
               ok: false,
-              error: `Không đủ VND (cần ${Math.round(money).toLocaleString('vi-VN')}đ)`,
+              error: `Không đủ VND (cần ${Math.round(money).toLocaleString('vi-VN')})`,
             }
           const txs = pairTx(
             {
@@ -1010,6 +1110,7 @@ export const useStore = create<Store>()(
           venue,
           note,
           deductUsdt = true,
+          externalId,
         } = input
         if (qty <= 0 || usdtSpent < 0)
           return { ok: false, error: 'Số lượng / giá vốn USDT không hợp lệ' }
@@ -1043,6 +1144,7 @@ export const useStore = create<Store>()(
             note:
               note ||
               'Hold sẵn / mua từ trước — không trừ USDT hiện tại',
+            externalId,
             createdAt: t,
             updatedAt: t,
           }
@@ -1050,13 +1152,13 @@ export const useStore = create<Store>()(
             transactions: [...s.transactions, tx],
             quotes: {
               ...s.quotes,
-              [assetId]: {
+              [assetId]: keepLiveCoinQuote(s.quotes[assetId], {
                 assetId,
                 price: pricePerUnit || s.quotes[assetId]?.price || 0,
                 currency: 'USDT',
                 label: venue || 'Hold cũ',
                 quotedAt: tradedAt,
-              },
+              }),
             },
           }))
           return { ok: true }
@@ -1081,6 +1183,7 @@ export const useStore = create<Store>()(
             tradedAt,
             venue,
             note,
+            externalId,
           },
           {
             kind: 'buy',
@@ -1096,21 +1199,69 @@ export const useStore = create<Store>()(
             tradedAt,
             venue,
             note,
+            externalId,
           },
         )
         set((s) => ({
           transactions: [...s.transactions, ...txs],
           quotes: {
             ...s.quotes,
-            [assetId]: {
+            [assetId]: keepLiveCoinQuote(s.quotes[assetId], {
               assetId,
               price: pricePerUnit,
               currency: 'USDT',
               label: venue || 'Sàn',
               quotedAt: tradedAt,
-            },
+            }),
           },
         }))
+        return { ok: true }
+      },
+
+      adjustCoinCostBasis: (input) => {
+        const state = get()
+        const asset = state.assets.find((a) => a.id === input.assetId)
+        if (!asset || asset.assetClass !== 'crypto')
+          return { ok: false, error: 'Không tìm thấy coin' }
+        if (!Number.isFinite(input.avgCostUsdt) || input.avgCostUsdt < 0)
+          return { ok: false, error: 'Giá vốn phải từ 0 trở lên' }
+
+        const position = computePosition(state, asset.id)
+        if (!(position.qtyHold > 0))
+          return { ok: false, error: 'Coin chưa có hold để sửa giá vốn' }
+
+        const currentTotal = position.totalCostOpen ?? 0
+        if (!Number.isFinite(currentTotal))
+          return { ok: false, error: 'Giá vốn hiện tại không hợp lệ' }
+
+        const targetTotal = position.qtyHold * input.avgCostUsdt
+        const delta = targetTotal - currentTotal
+        if (Math.abs(delta) < 1e-9) return { ok: true }
+
+        const t = nowIso()
+        const formatCost = (value: number) =>
+          value.toLocaleString('vi-VN', { maximumFractionDigits: 8 })
+        const currentAvg = position.avgCost ?? 0
+        const audit = `Giá vốn TB: ${formatCost(currentAvg)} → ${formatCost(input.avgCostUsdt)} USDT/coin`
+        const tx: Transaction = {
+          id: uid(),
+          kind: 'adjust',
+          assetId: asset.id,
+          side: delta >= 0 ? 'in' : 'out',
+          qty: 0,
+          pricePerUnit: input.avgCostUsdt,
+          priceCurrency: 'USDT',
+          fee: 0,
+          counterAssetId: getBySymbol(state, 'USDT')!.id,
+          counterQty: Math.abs(delta),
+          costBasisDeltaNative: delta,
+          tradedAt: t,
+          venue: 'Điều chỉnh',
+          note: input.note?.trim() ? `${input.note.trim()} · ${audit}` : audit,
+          createdAt: t,
+          updatedAt: t,
+        }
+        set((s) => ({ transactions: [...s.transactions, tx] }))
         return { ok: true }
       },
 
@@ -1141,7 +1292,9 @@ export const useStore = create<Store>()(
           counterQty: 0,
           counterCostVnd: input.qty * cost,
           tradedAt: input.tradedAt,
+          venue: input.venue,
           note: input.note || 'Điều chỉnh USDT',
+          externalId: input.externalId,
           createdAt: t,
           updatedAt: t,
         }
@@ -1152,8 +1305,16 @@ export const useStore = create<Store>()(
       sellCoin: (input) => {
         const state = get()
         const usdt = getBySymbol(state, 'USDT')!
-        const { assetId, qty, usdtReceived, fee = 0, tradedAt, venue, note } =
-          input
+        const {
+          assetId,
+          qty,
+          usdtReceived,
+          fee = 0,
+          tradedAt,
+          venue,
+          note,
+          externalId,
+        } = input
         if (qty <= 0 || usdtReceived <= 0)
           return { ok: false, error: 'Số lượng / USDT không hợp lệ' }
         const hold = qtyHoldAt(state, assetId)
@@ -1179,6 +1340,7 @@ export const useStore = create<Store>()(
             tradedAt,
             venue,
             note,
+            externalId,
           },
           {
             kind: 'sell',
@@ -1194,18 +1356,19 @@ export const useStore = create<Store>()(
             tradedAt,
             venue,
             note,
+            externalId,
           },
         )
         set((s) => ({
           transactions: [...s.transactions, ...txs],
           quotes: {
             ...s.quotes,
-            [assetId]: {
+            [assetId]: keepLiveCoinQuote(s.quotes[assetId], {
               assetId,
               price: pricePerUnit,
               currency: 'USDT',
               quotedAt: tradedAt,
-            },
+            }),
           },
         }))
         return { ok: true }
@@ -1224,7 +1387,7 @@ export const useStore = create<Store>()(
           if (hold < input.principal)
             return {
               ok: false,
-              error: `Không đủ tiền mặt (còn ${Math.round(hold).toLocaleString('vi-VN')}đ). Nạp VND hoặc tắt “trừ tiền mặt”.`,
+              error: `Không đủ tiền mặt (còn ${Math.round(hold).toLocaleString('vi-VN')}). Nạp VND hoặc tắt “trừ tiền mặt”.`,
             }
           const cashRes = get().adjustCash({
             side: 'withdraw',
@@ -1238,6 +1401,13 @@ export const useStore = create<Store>()(
 
         const t = nowIso()
         const id = uid()
+        const openEv: SavingsEvent = {
+          id: uid(),
+          type: 'open',
+          at: input.startDate || t,
+          amount: input.principal,
+          note: `Mở sổ · ${input.bank.trim() || 'Ngân hàng'} · ${input.rateAnnual || 0}%/năm`,
+        }
         const row: SavingsAccount = {
           id,
           name: input.name.trim(),
@@ -1250,6 +1420,7 @@ export const useStore = create<Store>()(
           status: 'active',
           note: input.note,
           linkedCash: input.linkedCash,
+          history: [openEv],
           createdAt: t,
           updatedAt: t,
         }
@@ -1259,9 +1430,10 @@ export const useStore = create<Store>()(
 
       topUpSavings: (input) => {
         if (input.amount <= 0) return { ok: false, error: 'Số tiền phải > 0' }
-        const s = get().savings.find((x) => x.id === input.id)
-        if (!s || s.status !== 'active')
+        const raw = get().savings.find((x) => x.id === input.id)
+        if (!raw || raw.status !== 'active')
           return { ok: false, error: 'Không tìm thấy khoản đang mở' }
+        const s = normalizeSavings(raw)
 
         if (input.linkedCash) {
           const cashRes = get().adjustCash({
@@ -1274,16 +1446,26 @@ export const useStore = create<Store>()(
           if (!cashRes.ok) return cashRes
         }
 
+        const ev: SavingsEvent = {
+          id: uid(),
+          type: 'topup',
+          at: input.tradedAt,
+          amount: input.amount,
+          principalBefore: s.principal,
+          note: 'Gửi thêm',
+        }
+
         set((st) => ({
-          savings: st.savings.map((x) =>
-            x.id === input.id
-              ? {
-                  ...x,
-                  principal: x.principal + input.amount,
-                  updatedAt: nowIso(),
-                }
-              : x,
-          ),
+          savings: st.savings.map((x) => {
+            if (x.id !== input.id) return x
+            const prev = normalizeSavings(x)
+            return {
+              ...prev,
+              principal: prev.principal + input.amount,
+              history: [...prev.history, ev],
+              updatedAt: nowIso(),
+            }
+          }),
         }))
         return { ok: true }
       },
@@ -1291,9 +1473,10 @@ export const useStore = create<Store>()(
       closeSavings: (input) => {
         if (input.amountBack < 0)
           return { ok: false, error: 'Số tiền nhận không hợp lệ' }
-        const s = get().savings.find((x) => x.id === input.id)
-        if (!s || s.status !== 'active')
+        const raw = get().savings.find((x) => x.id === input.id)
+        if (!raw || raw.status !== 'active')
           return { ok: false, error: 'Không tìm thấy khoản đang mở' }
+        const s = normalizeSavings(raw)
 
         if (input.linkedCash && input.amountBack > 0) {
           const cashRes = get().adjustCash({
@@ -1306,17 +1489,127 @@ export const useStore = create<Store>()(
           if (!cashRes.ok) return cashRes
         }
 
+        const interestPart = Math.max(0, input.amountBack - s.principal)
+        const ev: SavingsEvent = {
+          id: uid(),
+          type: 'close',
+          at: input.tradedAt,
+          amount: input.amountBack,
+          principalBefore: s.principal,
+          note:
+            interestPart > 0
+              ? `Tất toán · gốc ${Math.round(s.principal).toLocaleString('vi-VN')} · lãi ~${Math.round(interestPart).toLocaleString('vi-VN')}`
+              : `Tất toán · gốc ${Math.round(s.principal).toLocaleString('vi-VN')}`,
+        }
+
         set((st) => ({
-          savings: st.savings.map((x) =>
-            x.id === input.id
-              ? {
-                  ...x,
-                  principal: 0,
-                  status: 'closed' as const,
-                  updatedAt: nowIso(),
-                }
-              : x,
-          ),
+          savings: st.savings.map((x) => {
+            if (x.id !== input.id) return x
+            const prev = normalizeSavings(x)
+            return {
+              ...prev,
+              principal: 0,
+              status: 'closed' as const,
+              closedPrincipal: prev.principal,
+              closedAmountBack: input.amountBack,
+              closedAt: input.tradedAt,
+              history: [...prev.history, ev],
+              updatedAt: nowIso(),
+            }
+          }),
+        }))
+        return { ok: true }
+      },
+
+      updateSavings: (id, patch) => {
+        const raw = get().savings.find((x) => x.id === id)
+        if (!raw) return { ok: false, error: 'Không tìm thấy khoản tiết kiệm' }
+        const s = normalizeSavings(raw)
+        if (s.status === 'closed')
+          return { ok: false, error: 'Khoản đã tất toán — không sửa được' }
+
+        let principal = patch.principal ?? s.principal
+        if (principal <= 0) return { ok: false, error: 'Gốc phải > 0' }
+        const rateAnnual = patch.rateAnnual ?? s.rateAnnual
+        if (rateAnnual < 0) return { ok: false, error: 'Lãi suất không hợp lệ' }
+
+        const audit: string[] = []
+        if (patch.name != null && patch.name.trim() !== s.name)
+          audit.push(`Tên: ${s.name} → ${patch.name.trim()}`)
+        if (patch.bank != null && patch.bank.trim() !== s.bank)
+          audit.push(`NH: ${s.bank} → ${patch.bank.trim() || s.bank}`)
+        if (patch.principal != null && patch.principal !== s.principal)
+          audit.push(
+            `Gốc: ${Math.round(s.principal).toLocaleString('vi-VN')} → ${Math.round(principal).toLocaleString('vi-VN')}`,
+          )
+        if (patch.rateAnnual != null && patch.rateAnnual !== s.rateAnnual)
+          audit.push(
+            `Lãi: ${s.rateAnnual}% → ${rateAnnual}%/năm`,
+          )
+        if (patch.startDate != null && patch.startDate !== s.startDate)
+          audit.push('Đổi ngày gửi')
+        if (
+          patch.maturityDate !== undefined &&
+          patch.maturityDate !== s.maturityDate
+        )
+          audit.push('Đổi đáo hạn')
+        if (
+          patch.termMonths !== undefined &&
+          patch.termMonths !== s.termMonths
+        )
+          audit.push('Đổi kỳ hạn')
+        if (
+          patch.note !== undefined &&
+          (patch.note || '') !== (s.note || '')
+        )
+          audit.push('Đổi ghi chú')
+
+        const t = nowIso()
+        const editEv: SavingsEvent | null =
+          audit.length > 0
+            ? {
+                id: uid(),
+                type: 'edit',
+                at: t,
+                amount: Math.abs(principal - s.principal),
+                principalBefore: s.principal,
+                note: audit.join(' · '),
+              }
+            : null
+
+        set((st) => ({
+          savings: st.savings.map((x) => {
+            if (x.id !== id) return x
+            const prev = normalizeSavings(x)
+            return {
+              ...prev,
+              name:
+                patch.name != null ? patch.name.trim() || prev.name : prev.name,
+              bank:
+                patch.bank != null
+                  ? patch.bank.trim() || prev.bank
+                  : prev.bank,
+              principal,
+              rateAnnual,
+              startDate: patch.startDate ?? prev.startDate,
+              maturityDate:
+                patch.maturityDate !== undefined
+                  ? patch.maturityDate
+                  : prev.maturityDate,
+              termMonths:
+                patch.termMonths !== undefined
+                  ? patch.termMonths
+                  : prev.termMonths,
+              note:
+                patch.note !== undefined
+                  ? patch.note?.trim() || undefined
+                  : prev.note,
+              history: editEv
+                ? [...prev.history, editEv]
+                : prev.history,
+              updatedAt: t,
+            }
+          }),
         }))
         return { ok: true }
       },
@@ -1368,8 +1661,9 @@ export const useStore = create<Store>()(
       },
 
       updateLoan: (id, patch) => {
-        const loan = get().loans.find((x) => x.id === id)
-        if (!loan) return { ok: false, error: 'Không tìm thấy khoản vay' }
+        const raw = get().loans.find((x) => x.id === id)
+        if (!raw) return { ok: false, error: 'Không tìm thấy khoản vay' }
+        const loan = normalizeLoan(raw)
         if (loan.deletedAt) return { ok: false, error: 'Khoản đã xóa — hãy khôi phục trước' }
 
         let remaining = patch.remaining ?? loan.remaining
@@ -1385,35 +1679,84 @@ export const useStore = create<Store>()(
           else status = 'open'
         }
 
+        // Ghi lịch sử sửa — không để “sửa” làm mất dấu vết thu/gốc
+        const audit: string[] = []
+        if (patch.borrower != null && patch.borrower !== loan.borrower)
+          audit.push(`Tên: ${loan.borrower} → ${patch.borrower}`)
+        if (patch.principal != null && patch.principal !== loan.principal)
+          audit.push(
+            `Gốc: ${Math.round(loan.principal).toLocaleString('vi-VN')} → ${Math.round(principal).toLocaleString('vi-VN')}`,
+          )
+        if (patch.remaining != null && patch.remaining !== loan.remaining)
+          audit.push(
+            `Còn thu: ${Math.round(loan.remaining).toLocaleString('vi-VN')} → ${Math.round(remaining).toLocaleString('vi-VN')}`,
+          )
+        if (
+          patch.interestType != null &&
+          patch.interestType !== loan.interestType
+        )
+          audit.push('Đổi kiểu lãi')
+        if (
+          patch.interestValue != null &&
+          patch.interestValue !== loan.interestValue
+        )
+          audit.push('Đổi mức lãi')
+        if (patch.lendDate != null && patch.lendDate !== loan.lendDate)
+          audit.push('Đổi ngày vay')
+        if (
+          patch.dueDate !== undefined &&
+          patch.dueDate !== loan.dueDate
+        )
+          audit.push('Đổi hẹn trả')
+        if (patch.note !== undefined && (patch.note || '') !== (loan.note || ''))
+          audit.push('Đổi ghi chú')
+
+        const t = nowIso()
+        const editPay: LoanPayment | null =
+          audit.length > 0
+            ? {
+                id: uid(),
+                amount: Math.max(0, loan.remaining - remaining),
+                paidAt: t,
+                type: 'edit',
+                note: audit.join(' · '),
+              }
+            : null
+
         set((st) => ({
-          loans: st.loans.map((x) =>
-            x.id === id
-              ? {
-                  ...x,
-                  ...patch,
-                  principal,
-                  remaining,
-                  status,
-                  phone: patch.phone !== undefined ? patch.phone || undefined : x.phone,
-                  updatedAt: nowIso(),
-                }
-              : x,
-          ),
+          loans: st.loans.map((x) => {
+            if (x.id !== id) return x
+            const prev = normalizeLoan(x)
+            return {
+              ...prev,
+              ...patch,
+              principal,
+              remaining,
+              status,
+              phone:
+                patch.phone !== undefined ? patch.phone || undefined : prev.phone,
+              payments: editPay
+                ? [...prev.payments, editPay]
+                : prev.payments,
+              updatedAt: t,
+            }
+          }),
         }))
         return { ok: true }
       },
 
       receiveLoanPayment: (input) => {
         if (input.amount <= 0) return { ok: false, error: 'Số thu phải > 0' }
-        const loan = get().loans.find((x) => x.id === input.id)
-        if (!loan) return { ok: false, error: 'Không tìm thấy khoản vay' }
+        const raw = get().loans.find((x) => x.id === input.id)
+        if (!raw) return { ok: false, error: 'Không tìm thấy khoản vay' }
+        const loan = normalizeLoan(raw)
         if (loan.deletedAt) return { ok: false, error: 'Khoản đã ở thùng rác' }
         if (loan.status === 'paid' || loan.status === 'written_off')
           return { ok: false, error: 'Khoản này đã đóng' }
         if (input.amount > loan.remaining + 0.001)
           return {
             ok: false,
-            error: `Chỉ còn phải thu gốc ${Math.round(loan.remaining).toLocaleString('vi-VN')}đ`,
+            error: `Chỉ còn phải thu gốc ${Math.round(loan.remaining).toLocaleString('vi-VN')}`,
           }
 
         if (input.linkedCash) {
@@ -1439,25 +1782,26 @@ export const useStore = create<Store>()(
           remaining <= 0 ? 'paid' : remaining < loan.principal ? 'partial' : 'open'
 
         set((st) => ({
-          loans: st.loans.map((x) =>
-            x.id === input.id
-              ? {
-                  ...x,
-                  remaining,
-                  status,
-                  payments: [...x.payments, pay],
-                  updatedAt: nowIso(),
-                }
-              : x,
-          ),
+          loans: st.loans.map((x) => {
+            if (x.id !== input.id) return x
+            const prev = normalizeLoan(x)
+            return {
+              ...prev,
+              remaining,
+              status,
+              payments: [...prev.payments, pay],
+              updatedAt: nowIso(),
+            }
+          }),
         }))
         return { ok: true }
       },
 
       payLoanInterest: (input) => {
         if (input.amount <= 0) return { ok: false, error: 'Số lãi phải > 0' }
-        const loan = get().loans.find((x) => x.id === input.id)
-        if (!loan) return { ok: false, error: 'Không tìm thấy khoản vay' }
+        const raw = get().loans.find((x) => x.id === input.id)
+        if (!raw) return { ok: false, error: 'Không tìm thấy khoản vay' }
+        const loan = normalizeLoan(raw)
         if (loan.deletedAt) return { ok: false, error: 'Khoản đã ở thùng rác' }
         if (loan.status === 'written_off')
           return { ok: false, error: 'Khoản đã xóa nợ' }
@@ -1482,37 +1826,46 @@ export const useStore = create<Store>()(
         }
 
         set((st) => ({
-          loans: st.loans.map((x) =>
-            x.id === input.id
-              ? {
-                  ...x,
-                  interestPaid: (x.interestPaid || 0) + input.amount,
-                  payments: [...x.payments, pay],
-                  updatedAt: nowIso(),
-                }
-              : x,
-          ),
+          loans: st.loans.map((x) => {
+            if (x.id !== input.id) return x
+            const prev = normalizeLoan(x)
+            return {
+              ...prev,
+              interestPaid: (prev.interestPaid || 0) + input.amount,
+              payments: [...prev.payments, pay],
+              updatedAt: nowIso(),
+            }
+          }),
         }))
         return { ok: true }
       },
 
       writeOffLoan: (id) => {
-        const loan = get().loans.find((x) => x.id === id)
-        if (!loan) return { ok: false, error: 'Không tìm thấy' }
+        const raw = get().loans.find((x) => x.id === id)
+        if (!raw) return { ok: false, error: 'Không tìm thấy' }
+        const loan = normalizeLoan(raw)
+        const pay: LoanPayment = {
+          id: uid(),
+          amount: loan.remaining,
+          paidAt: nowIso(),
+          type: 'write_off',
+          note: 'Xóa nợ — không thu được',
+        }
         set((st) => ({
-          loans: st.loans.map((x) =>
-            x.id === id
-              ? {
-                  ...x,
-                  status: 'written_off' as const,
-                  remaining: 0,
-                  updatedAt: nowIso(),
-                  note: x.note
-                    ? `${x.note} · [Xóa nợ — không thu được]`
-                    : '[Xóa nợ — không thu được]',
-                }
-              : x,
-          ),
+          loans: st.loans.map((x) => {
+            if (x.id !== id) return x
+            const prev = normalizeLoan(x)
+            return {
+              ...prev,
+              status: 'written_off' as const,
+              remaining: 0,
+              updatedAt: nowIso(),
+              payments: [...prev.payments, pay],
+              note: prev.note
+                ? `${prev.note} · [Xóa nợ — không thu được]`
+                : '[Xóa nợ — không thu được]',
+            }
+          }),
         }))
         return { ok: true }
       },
@@ -1631,13 +1984,7 @@ export const useStore = create<Store>()(
             snapshotCounts(cur),
           )
         }
-        const loans = (data.loans ?? []).map((l) => ({
-          ...l,
-          interestPaid: l.interestPaid ?? 0,
-          deletedAt: l.deletedAt ?? null,
-          interestType: l.interestType ?? ('annual' as const),
-          interestValue: l.interestValue ?? l.rateAnnual ?? 0,
-        }))
+        const loans = normalizeLoans(data.loans as Loan[] | undefined)
         const settings = {
           ...defaultSettings,
           ...data.settings,
@@ -1649,7 +1996,9 @@ export const useStore = create<Store>()(
           transactions: data.transactions ?? [],
           quotes: data.quotes ?? seedQuotes(),
           settings,
-          savings: data.savings ?? [],
+          savings: normalizeSavingsList(
+            data.savings as SavingsAccount[] | undefined,
+          ),
           loans,
           expenseCategories: data.expenseCategories?.length
             ? data.expenseCategories
@@ -1791,10 +2140,11 @@ export const useStore = create<Store>()(
             if (hold < amount)
               return {
                 ok: false,
-                error: `Không đủ tiền mặt (còn ${Math.round(hold).toLocaleString('vi-VN')}đ). Tắt “trừ tiền mặt” hoặc nạp VND.`,
+                error: `Không đủ tiền mặt (còn ${Math.round(hold).toLocaleString('vi-VN')}). Tắt “trừ tiền mặt” hoặc nạp VND.`,
               }
           }
           cashTxId = uid()
+          const userNote = input.note?.trim()
           const cashTx: Transaction = {
             id: cashTxId,
             kind: 'adjust',
@@ -1807,11 +2157,15 @@ export const useStore = create<Store>()(
             counterAssetId: vnd.id,
             counterQty: 0,
             tradedAt: input.spentAt,
+            // Prefix cố định để History phân biệt nạp/rút tay vs chi tiêu
             note:
-              input.note ||
-              (input.kind === 'expense'
-                ? `Chi tiêu · ${cat.name}`
-                : `Thu nhập · ${cat.name}`),
+              input.kind === 'expense'
+                ? userNote
+                  ? `Chi tiêu · ${cat.name} · ${userNote}`
+                  : `Chi tiêu · ${cat.name}`
+                : userNote
+                  ? `Thu nhập · ${cat.name} · ${userNote}`
+                  : `Thu nhập · ${cat.name}`,
             createdAt: t,
             updatedAt: t,
           }
@@ -1995,6 +2349,7 @@ export const useStore = create<Store>()(
     }),
     {
       name: STORAGE_KEY,
+      storage: createJSONStorage(() => debouncedPersistStorage),
       partialize: (s) => ({
         version: s.version,
         assets: s.assets,
@@ -2008,75 +2363,82 @@ export const useStore = create<Store>()(
         expenseBudgets: s.expenseBudgets,
       }),
       merge: (persisted, current) => {
-        const p = (persisted || {}) as Partial<
-          Pick<
-            Store,
-            | 'version'
-            | 'assets'
-            | 'transactions'
-            | 'quotes'
-            | 'settings'
-            | 'savings'
-            | 'loans'
-            | 'expenseCategories'
-            | 'expenses'
-            | 'expenseBudgets'
+        try {
+          const p = (persisted || {}) as Partial<
+            Pick<
+              Store,
+              | 'version'
+              | 'assets'
+              | 'transactions'
+              | 'quotes'
+              | 'settings'
+              | 'savings'
+              | 'loans'
+              | 'expenseCategories'
+              | 'expenses'
+              | 'expenseBudgets'
+            >
           >
-        >
-        const settings = {
-          ...defaultSettings,
-          ...p.settings,
-          autoGoldPrice: p.settings?.autoGoldPrice ?? false,
-          expenseLinkCashDefault: p.settings?.expenseLinkCashDefault ?? false,
-          hasOnboarded:
-            p.settings?.hasOnboarded ||
-            hasAnyData({
-              transactions: p.transactions || [],
-              savings: p.savings || [],
-              loans: p.loans || [],
-              expenses: p.expenses || [],
-              settings: p.settings,
-            }),
+          const settings = {
+            ...defaultSettings,
+            ...p.settings,
+            autoGoldPrice: p.settings?.autoGoldPrice ?? false,
+            expenseLinkCashDefault: p.settings?.expenseLinkCashDefault ?? false,
+            hasOnboarded:
+              p.settings?.hasOnboarded ||
+              hasAnyData({
+                transactions: p.transactions || [],
+                savings: p.savings || [],
+                loans: p.loans || [],
+                expenses: p.expenses || [],
+                settings: p.settings,
+              }),
+          }
+          // migrate old loans: payments luôn là mảng (tránh mất lịch sử thu/sửa)
+          const loans = normalizeLoans(p.loans as Loan[] | undefined)
+          // Có list cũ → giữ; thiếu danh mục thu thì bổ sung seed income
+          let expenseCategories =
+            p.expenseCategories?.length
+              ? p.expenseCategories
+              : seedExpenseCategories()
+          if (
+            expenseCategories.length > 0 &&
+            !expenseCategories.some((c) => c.kind === 'income')
+          ) {
+            expenseCategories = [
+              ...expenseCategories,
+              ...seedExpenseCategories().filter((c) => c.kind === 'income'),
+            ]
+          }
+          const merged = {
+            ...current,
+            version: p.version ?? current.version,
+            assets: p.assets?.length ? p.assets : current.assets,
+            transactions: Array.isArray(p.transactions) ? p.transactions : [],
+            quotes: p.quotes ?? current.quotes,
+            settings,
+            savings: normalizeSavingsList(
+              p.savings as SavingsAccount[] | undefined,
+            ),
+            loans,
+            expenseCategories,
+            expenses: Array.isArray(p.expenses) ? p.expenses : [],
+            expenseBudgets: Array.isArray(p.expenseBudgets)
+              ? p.expenseBudgets
+              : [],
+            navStack: [],
+          }
+          // Có data → vào Chi tiêu trước (không mở Tài sản ngay)
+          merged.screen = hasAnyData(merged) ? 'spend' : 'onboarding'
+          return merged
+        } catch (e) {
+          console.error('merge persisted state failed', e)
+          return {
+            ...current,
+            screen: 'onboarding' as const,
+            navStack: [],
+          }
         }
-        // migrate old loans missing new fields
-        const loans = (p.loans ?? []).map((l) => ({
-          ...l,
-          interestPaid: l.interestPaid ?? 0,
-          deletedAt: l.deletedAt ?? null,
-          interestType: l.interestType ?? ('annual' as const),
-          interestValue: l.interestValue ?? l.rateAnnual ?? 0,
-        }))
-        // Có list cũ → giữ; thiếu danh mục thu thì bổ sung seed income
-        let expenseCategories =
-          p.expenseCategories?.length
-            ? p.expenseCategories
-            : seedExpenseCategories()
-        if (
-          expenseCategories.length > 0 &&
-          !expenseCategories.some((c) => c.kind === 'income')
-        ) {
-          expenseCategories = [
-            ...expenseCategories,
-            ...seedExpenseCategories().filter((c) => c.kind === 'income'),
-          ]
-        }
-        const merged = {
-          ...current,
-          version: p.version ?? current.version,
-          assets: p.assets?.length ? p.assets : current.assets,
-          transactions: p.transactions ?? [],
-          quotes: p.quotes ?? current.quotes,
-          settings,
-          savings: p.savings ?? [],
-          loans,
-          expenseCategories,
-          expenses: p.expenses ?? [],
-          expenseBudgets: p.expenseBudgets ?? [],
-          navStack: [],
-        }
-        // Có data → vào Chi tiêu trước (không mở Tài sản ngay)
-        merged.screen = hasAnyData(merged) ? 'spend' : 'onboarding'
-        return merged
       },
       onRehydrateStorage: () => (state, err) => {
         if (err) {

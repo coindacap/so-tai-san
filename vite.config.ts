@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite'
+import { defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 
 // GitHub Pages: https://coindacap.github.io/so-tai-san/
@@ -9,4 +9,9 @@ const base = process.env.VITE_BASE || '/'
 export default defineConfig({
   base,
   plugins: [react()],
+  test: {
+    environment: 'happy-dom',
+    setupFiles: ['src/test/setup.ts'],
+    include: ['src/**/*.test.ts'],
+  },
 })

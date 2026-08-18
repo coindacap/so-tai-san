@@ -29,6 +29,12 @@ export function fmtSignedVnd(n: number, compact = false): string {
   return `${sign}${fmtVnd(Math.abs(n), compact)}`
 }
 
+export function fmtSignedUsdt(n: number | null | undefined, digits = 2): string {
+  if (n == null || !Number.isFinite(n)) return '—'
+  const sign = n > 0 ? '+' : n < 0 ? '−' : ''
+  return `${sign}${fmtNum(Math.abs(n), digits)} USDT`
+}
+
 /** Chỉ lấy chữ số → number */
 export function parseMoney(s: string | number): number {
   if (typeof s === 'number') return Number.isFinite(s) ? s : 0
@@ -110,18 +116,65 @@ export function toDateInput(iso?: string | null): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 }
 
-/** Ước lãi đơn từ start → now (hoặc maturity nếu đã qua) */
+/**
+ * Ước lãi đơn (simple interest):
+ *   gốc × (lãi%/năm / 100) × (số ngày / 365)
+ * Dùng số ngày lịch (0h→0h), không dùng phân số giờ — tránh “nhân lệch”
+ * khi vừa mở sổ vài giờ.
+ */
 export function estimateInterest(
   principal: number,
   rateAnnual: number,
   startIso: string,
   endIso?: string | null,
 ): number {
-  if (principal <= 0 || rateAnnual <= 0) return 0
-  const start = new Date(startIso).getTime()
-  const end = endIso ? new Date(endIso).getTime() : Date.now()
-  const days = Math.max(0, (end - start) / (1000 * 60 * 60 * 24))
+  if (!(principal > 0) || !(rateAnnual > 0)) return 0
+  const days = daysBetween(startIso, endIso ?? undefined)
+  if (days <= 0) return 0
   return principal * (rateAnnual / 100) * (days / 365)
+}
+
+/**
+ * Lãi / lợi nhuận cuối kỳ (đến ngày đáo hạn hoặc theo số tháng kỳ hạn).
+ * - Có maturityDate → lãi từ start → maturity
+ * - Không ngày nhưng có termMonths → gốc × rate/100 × months/12
+ * - Không kỳ hạn → 0 (chỉ có lãi tạm theo ngày)
+ */
+export function estimateMaturityInterest(
+  principal: number,
+  rateAnnual: number,
+  startIso: string,
+  maturityDate?: string | null,
+  termMonths?: number | null,
+): number {
+  if (!(principal > 0) || !(rateAnnual > 0)) return 0
+  if (maturityDate) {
+    return estimateInterest(principal, rateAnnual, startIso, maturityDate)
+  }
+  const m = termMonths != null ? Number(termMonths) : 0
+  if (m > 0) {
+    return principal * (rateAnnual / 100) * (m / 12)
+  }
+  return 0
+}
+
+/** Parse % (vd "9,5" / "9.5" / "9.") → number */
+export function parseRatePercent(s: string | number): number {
+  if (typeof s === 'number') return Number.isFinite(s) ? s : 0
+  const t = String(s ?? '')
+    .trim()
+    .replace(/．/g, '.')
+    .replace(/[，､٫、]/g, ',')
+    .replace(/,/g, '.')
+    .replace(/[^\d.]/g, '')
+  if (!t || t === '.') return 0
+  // "9." đang gõ
+  if (t.endsWith('.')) {
+    const n = Number(t.slice(0, -1))
+    return Number.isFinite(n) ? n : 0
+  }
+  const n = Number(t)
+  return Number.isFinite(n) ? n : 0
 }
 
 export function daysUntil(iso: string | null | undefined): number | null {
@@ -142,8 +195,8 @@ export function daysBetween(fromIso: string, toIso?: string): number {
  * Lãi tạm tính theo kiểu lãi + số ngày / tháng.
  * - annual: remaining * rateAnnual/100 * days/365
  * - percent_monthly: remaining * interestValue/100 * (days/30)
- * - per_million_daily: remaining/1e6 * interestValue * days  (vd 1000đ/1tr/ngày)
- * - flat_monthly: interestValue * (days/30)  (vd 1.300.000đ/tháng)
+ * - per_million_daily: remaining/1e6 * interestValue * days  (vd 1000/1tr/ngày)
+ * - flat_monthly: interestValue * (days/30)  (vd 1.300.000/tháng)
  *
  * @param fromDate — mốc bắt đầu tính (mặc định = lendDate).
  *   Sau khi đóng lãi: truyền ngày đóng lãi gần nhất → chỉ tính kỳ mới.
@@ -292,11 +345,11 @@ export function loanInterestLabel(input: {
     if (val >= 1000 && val % 1000 === 0) {
       return `${val / 1000}k/1tr/ngày`
     }
-    return `${val.toLocaleString('vi-VN')}đ/1tr/ngày`
+    return `${val.toLocaleString('vi-VN')}/1tr/ngày`
   }
   if (type === 'flat_monthly') {
     return val > 0
-      ? `${Math.round(val).toLocaleString('vi-VN')}đ/tháng`
+      ? `${Math.round(val).toLocaleString('vi-VN')}/tháng`
       : 'Không lãi'
   }
   const a = input.rateAnnual ?? 0
@@ -310,7 +363,7 @@ export function toRateAnnual(
 ): number {
   if (interestType === 'percent_monthly') return interestValue * 12
   if (interestType === 'per_million_daily') {
-    // val đ/triệu/ngày → %/năm ≈ (val/1e6)*365*100
+    // val /triệu/ngày → %/năm ≈ (val/1e6)*365*100
     return Math.round((interestValue / 1_000_000) * 365 * 100 * 100) / 100
   }
   if (interestType === 'flat_monthly') return 0 // không quy % được ổn định

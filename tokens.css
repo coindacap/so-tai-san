@@ -1,0 +1,120 @@
+/* Hallmark · token source: design.md · light-only · designed-as-app */
+:root {
+  color-scheme: light;
+
+  /* Surfaces and text */
+  --color-canvas: oklch(90.5% 0.012 20);
+  --color-paper: oklch(97.8% 0.006 20);
+  --color-paper-2: oklch(95.5% 0.008 20);
+  --color-paper-3: oklch(92.5% 0.01 20);
+  --color-surface: oklch(99.2% 0.003 20);
+  --color-surface-translucent: oklch(99.2% 0.003 20 / 0.96);
+  --color-ink: oklch(18% 0.014 20);
+  --color-ink-2: oklch(33% 0.016 20);
+  --color-muted: oklch(55% 0.014 20);
+  --color-rule: oklch(86% 0.012 20);
+  --color-rule-strong: oklch(76% 0.014 20);
+  --color-border-soft: oklch(28% 0.012 20 / 0.1);
+
+  /* Brand and semantic signals */
+  --color-accent: oklch(52% 0.205 21);
+  --color-accent-strong: oklch(43% 0.18 21);
+  --color-accent-soft: oklch(95% 0.028 21);
+  --color-accent-ink: oklch(98.5% 0.004 20);
+  --color-focus: oklch(56% 0.22 21);
+  --color-gain: oklch(50% 0.145 145);
+  --color-gain-bright: oklch(72% 0.17 145);
+  --color-gain-soft: oklch(95% 0.04 145);
+  --color-loss: oklch(57% 0.21 27);
+  --color-loss-soft: oklch(95% 0.035 27);
+  --color-warning: oklch(67% 0.16 55);
+  --color-warning-ink: oklch(46% 0.12 55);
+  --color-warning-soft: oklch(95% 0.045 55);
+  --color-overlay: oklch(18% 0.014 20 / 0.42);
+  --color-inverse: oklch(98.5% 0.004 20);
+  --color-inverse-muted: oklch(98.5% 0.004 20 / 0.62);
+  --color-inverse-faint: oklch(98.5% 0.004 20 / 0.12);
+
+  /* Domain signals */
+  --color-gold: oklch(68% 0.14 75);
+  --color-gold-ink: oklch(43% 0.1 75);
+  --color-gold-soft: oklch(95% 0.035 75);
+  --color-coin: oklch(53% 0.16 265);
+  --color-coin-ink: oklch(40% 0.15 265);
+  --color-coin-soft: oklch(95% 0.03 265);
+  --color-cash-ink: oklch(35% 0.012 20);
+  --color-cash-soft: oklch(94% 0.008 20);
+  --color-savings-ink: oklch(42% 0.105 145);
+  --color-savings-soft: oklch(94% 0.04 145);
+  --color-loan-ink: oklch(49% 0.14 55);
+  --color-loan-soft: oklch(95% 0.045 55);
+  --color-spend-ink: oklch(43% 0.13 55);
+  --color-spend-soft: oklch(96% 0.03 55);
+
+  /* Apple and SF system stacks */
+  --font-display: -apple-system, BlinkMacSystemFont, 'SF Pro Display',
+    'SF Pro Text', system-ui, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
+    sans-serif;
+  --font-body: -apple-system, BlinkMacSystemFont, 'SF Pro Text',
+    'SF Pro Display', system-ui, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
+    sans-serif;
+  --font-mono: 'SFMono-Regular', ui-monospace, Menlo, Monaco, Consolas,
+    monospace;
+  --font-weight-regular: 400;
+  --font-weight-medium: 510;
+  --font-weight-semibold: 650;
+  --font-weight-bold: 760;
+  --tracking-display: -0.03em;
+  --tracking-body: -0.01em;
+  --tracking-label: 0.01em;
+
+  /* Familiar iOS type scale */
+  --text-2xs: 0.6875rem;
+  --text-xs: 0.75rem;
+  --text-sm: 0.8125rem;
+  --text-base: 0.9375rem;
+  --text-md: 1.0625rem;
+  --text-lg: 1.25rem;
+  --text-xl: 1.5rem;
+  --text-2xl: 1.75rem;
+  --text-3xl: 2.125rem;
+  --text-display: clamp(2.125rem, 8vw, 3rem);
+  --leading-tight: 1.12;
+  --leading-ui: 1.3;
+  --leading-body: 1.5;
+
+  /* 4 px spacing scale */
+  --space-3xs: 0.25rem;
+  --space-2xs: 0.5rem;
+  --space-xs: 0.75rem;
+  --space-sm: 1rem;
+  --space-md: 1.25rem;
+  --space-lg: 1.5rem;
+  --space-xl: 2rem;
+  --space-2xl: 2.5rem;
+  --space-3xl: 3rem;
+  --space-4xl: 4rem;
+
+  /* Shape, rules, and depth */
+  --rule-hair: 0.5px;
+  --rule-fine: 1px;
+  --rule-emphasis: 2px;
+  --radius-control: 0.625rem;
+  --radius-input: 0.75rem;
+  --radius-card: 1rem;
+  --radius-sheet: 1.375rem;
+  --radius-shell: 1.75rem;
+  --radius-pill: 999px;
+  --shadow-hairline: 0 0 0 1px oklch(28% 0.012 20 / 0.05);
+  --shadow-card: 0 1px 3px oklch(18% 0.014 20 / 0.06);
+  --shadow-floating: 0 12px 32px oklch(18% 0.014 20 / 0.12);
+  --shadow-chrome: 0 -6px 20px oklch(18% 0.014 20 / 0.06);
+
+  /* Motion */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in: cubic-bezier(0.7, 0, 0.84, 0);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --dur-micro: 120ms;
+  --dur-short: 220ms;
+  --dur-long: 420ms;
+}

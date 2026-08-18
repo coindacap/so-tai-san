@@ -13,56 +13,77 @@ export function Onboarding() {
   const [goldAvg, setGoldAvg] = useState('7850000')
 
   return (
-    <div className="scroll plain">
-      <div className="large-title" style={{ paddingTop: 24 }}>
+    <div className="scroll plain wb-page">
+      <div className="large-title onboarding-title">
         <h1>Sổ Tài Sản</h1>
         <div className="sub">
-          Nhẫn 9999 · USDT · Coin — dữ liệu lưu trên máy bạn
+          Nhẫn 9999 · USDT · Coin · lưu trên máy bạn
         </div>
       </div>
 
-      <p style={{ fontSize: 14, color: 'var(--muted)', marginBottom: 16, lineHeight: 1.45 }}>
-        Nhập số dư hiện có (có thể để 0). Sau đó ghi từng lần mua/bán. App chạy
-        offline trên iPhone khi thêm vào Màn hình chính.
+      <p className="onboarding-lead">
+        Nhập số dư hiện có (có thể để 0). Sau đó ghi từng lần mua hoặc bán.
+        Thêm vào Màn hình chính để dùng offline trên iPhone.
       </p>
 
       <div className="card">
         <div className="field">
-          <label>Tiền mặt VND</label>
-          <MoneyInput value={vnd} onChange={setVnd} />
+          <label htmlFor="onb-vnd">Tiền mặt VND</label>
+          <MoneyInput
+            value={vnd}
+            onChange={setVnd}
+            inputId="onb-vnd"
+            ariaLabel="Tiền mặt VND"
+          />
         </div>
         <div className="field">
-          <label>USDT đang hold</label>
+          <label htmlFor="onb-usdt">USDT đang hold</label>
           <MoneyInput
             value={usdt}
             onChange={setUsdt}
             unit="USDT"
             decimal
             maxFraction={6}
+            inputId="onb-usdt"
+            ariaLabel="USDT đang hold"
           />
         </div>
         <div className="field">
-          <label>Giá vốn USDT (đ/USDT)</label>
-          <MoneyInput value={usdtAvg} onChange={setUsdtAvg} unit="đ" />
+          <label htmlFor="onb-usdt-avg">Giá vốn USDT (VND/USDT)</label>
+          <MoneyInput
+            value={usdtAvg}
+            onChange={setUsdtAvg}
+                        inputId="onb-usdt-avg"
+            ariaLabel="Giá vốn USDT"
+          />
         </div>
         <div className="field">
-          <label>Nhẫn 9999 đang hold</label>
+          <label htmlFor="onb-gold">Nhẫn 9999 đang hold</label>
           <MoneyInput
             value={gold}
             onChange={setGold}
             unit="chỉ"
             decimal
             maxFraction={2}
+            inputId="onb-gold"
+            ariaLabel="Nhẫn 9999 đang hold"
           />
         </div>
         <div className="field">
-          <label>Giá vốn nhẫn (đ/chỉ)</label>
-          <MoneyInput value={goldAvg} onChange={setGoldAvg} unit="đ/chỉ" />
+          <label htmlFor="onb-gold-avg">Giá vốn nhẫn (/chỉ)</label>
+          <MoneyInput
+            value={goldAvg}
+            onChange={setGoldAvg}
+            unit="chỉ"
+            inputId="onb-gold-avg"
+            ariaLabel="Giá vốn nhẫn"
+          />
           <div className="hint">Vàng nhẫn 9999 · ngoài tiệm · 1 loại</div>
         </div>
       </div>
 
       <button
+        type="button"
         className="btn-primary"
         onClick={() =>
           bootstrap({
@@ -77,6 +98,7 @@ export function Onboarding() {
         Bắt đầu dùng
       </button>
       <button
+        type="button"
         className="btn-secondary"
         onClick={() => {
           bootstrap({
@@ -94,4 +116,3 @@ export function Onboarding() {
     </div>
   )
 }
-

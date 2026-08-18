@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import type { CSSProperties } from 'react'
 import { useStore } from '../store/useStore'
 import {
   currentYearMonth,
@@ -14,6 +15,7 @@ import {
   fromLocalInput,
 } from '../lib/format'
 import { MoneyInput } from '../components/MoneyInput'
+import { AppIcon } from '../components/AppIcon'
 import { mask } from '../lib/ui'
 
 function shiftMonth(ym: string, delta: number): string {
@@ -23,15 +25,15 @@ function shiftMonth(ym: string, delta: number): string {
 }
 
 function monthLabel(ym: string): string {
-  const [y, m] = ym.split('-')
-  return `${String(m).padStart(2, '0')}/${y}`
+  const [y, m] = ym.split('-').map(Number)
+  return `Tháng ${m} · ${y}`
 }
 
 function monthRangeLabel(ym: string): string {
   const [y, m] = ym.split('-').map(Number)
   const last = new Date(y!, m!, 0).getDate()
   const mm = String(m).padStart(2, '0')
-  return `01/${mm} – ${last}/${mm}`
+  return `01/${mm} · ${String(last).padStart(2, '0')}/${mm}`
 }
 
 const WEEKDAYS_VI = ['CN', 'Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7']
@@ -100,7 +102,7 @@ function groupByDay<T extends { spentAt: string; kind: string; amount: number }>
 function donutStyle(
   slices: { pct: number; color: string }[],
 ): string {
-  if (!slices.length) return 'conic-gradient(#e5e5ea 0 100%)'
+  if (!slices.length) return 'conic-gradient(var(--color-rule) 0 100%)'
   let acc = 0
   const parts: string[] = []
   for (const s of slices) {
@@ -108,7 +110,7 @@ function donutStyle(
     acc += s.pct
     parts.push(`${s.color} ${from}% ${Math.min(100, acc)}%`)
   }
-  if (acc < 100) parts.push(`#e5e5ea ${acc}% 100%`)
+  if (acc < 100) parts.push(`var(--color-rule) ${acc}% 100%`)
   return `conic-gradient(${parts.join(', ')})`
 }
 
@@ -134,192 +136,206 @@ export function SpendHome({ privacy }: { privacy: boolean }) {
   const dayGroups = useMemo(() => groupByDay(sum.entries), [sum.entries])
 
   return (
-    <div className="scroll">
-      <div className="report-head">
-        <h1>Báo cáo</h1>
+    <div className="scroll spend-home">
+      <header className="spend-home__head">
+        <h1 className="spend-home__title">Chi tiêu</h1>
         <button
           type="button"
-          className="link-btn"
+          className="spend-home__text-btn"
           onClick={() => setScreen('spend-categories')}
         >
           Danh mục
         </button>
-      </div>
+      </header>
 
-      {/* Chọn tháng */}
-      <div className="report-month-pill">
-        <button type="button" onClick={() => setYm(shiftMonth(ym, -1))} aria-label="Tháng trước">
-          ‹
-        </button>
-        <div className="report-month-mid">
-          <strong>{monthLabel(ym)}</strong>
-          <span>({monthRangeLabel(ym)})</span>
-        </div>
-        <button type="button" onClick={() => setYm(shiftMonth(ym, 1))} aria-label="Tháng sau">
-          ›
-        </button>
-      </div>
-
-      {/* Tổng chi */}
-      <div className="report-sum-card">
-        <div className="report-sum-row">
-          <span>Chi tiêu</span>
-          <span className="num down">
-            −{mask(privacy, fmtVnd(sum.expense))}đ
-          </span>
-        </div>
-        {sum.income > 0 && (
-          <div className="report-sum-row">
-            <span>Thu nhập</span>
-            <span className="num up">
-              +{mask(privacy, fmtVnd(sum.income))}đ
-            </span>
-          </div>
-        )}
-        <div className="report-sum-row muted">
-          <span>
-            {sum.byCat.length} danh mục · {expenseCount} khoản chi
-            {dayGroups.length > 0 ? ` · ${dayGroups.length} ngày` : ''}
-          </span>
-        </div>
-      </div>
-
-      {/* CTA ghi chi to */}
-      <div className="spend-cta-wrap">
+      <div className="spend-home__month" role="group" aria-label="Chọn tháng">
         <button
           type="button"
-          className="spend-cta-main"
+          className="spend-home__month-nav"
+          onClick={() => setYm(shiftMonth(ym, -1))}
+          aria-label="Tháng trước"
+        >
+          <AppIcon name="arrow-left" size={18} />
+        </button>
+        <div className="spend-home__month-core">
+          <strong>{monthLabel(ym)}</strong>
+          <span>{monthRangeLabel(ym)}</span>
+        </div>
+        <button
+          type="button"
+          className="spend-home__month-nav"
+          onClick={() => setYm(shiftMonth(ym, 1))}
+          aria-label="Tháng sau"
+        >
+          <AppIcon name="chevron-right" size={18} />
+        </button>
+      </div>
+
+      <section className="spend-home__hero" aria-label="Tổng chi tháng">
+        <p className="spend-home__eyebrow">Tổng chi</p>
+        <p className="spend-home__amount num">
+          −{mask(privacy, fmtVnd(sum.expense))}
+
+        </p>
+        <p className="spend-home__meta">
+          {sum.byCat.length} danh mục · {expenseCount} khoản
+          {dayGroups.length > 0 ? ` · ${dayGroups.length} ngày` : ''}
+        </p>
+        {sum.income > 0 ? (
+          <p className="spend-home__income">
+            Thu nhập{' '}
+            <span className="num up">+{mask(privacy, fmtVnd(sum.income))}</span>
+          </p>
+        ) : null}
+
+        <button
+          type="button"
+          className="spend-home__cta"
           onClick={() => setScreen('spend-form')}
         >
-          <span className="spend-cta-ico">−</span>
-          <span className="spend-cta-title">Ghi chi</span>
-          <span className="spend-cta-sub">Chạm để thêm khoản chi ngay</span>
-        </button>
-      </div>
-
-      {/* Donut + list danh mục */}
-      <div className="report-section-title">Chi theo danh mục</div>
-
-      {sum.byCat.length === 0 ? (
-        <div className="empty" style={{ paddingTop: 8 }}>
-          <h3>Chưa có dữ liệu tháng này</h3>
-          <p>Ghi chi để xem biểu đồ báo cáo.</p>
-        </div>
-      ) : (
-        <>
-          <div className="report-donut-wrap">
-            <div className="report-donut" style={{ background: donut }}>
-              <div className="report-donut-hole">
-                <div className="k">Tổng chi</div>
-                <div className="v num">
-                  {mask(privacy, fmtVnd(sum.expense, true))}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="group report-cat-list">
-            {sum.byCat.map((c) => (
-              <div key={c.categoryId} className="row" style={{ cursor: 'default' }}>
-                <div
-                  className="mark"
-                  style={{ background: `${c.color}22`, color: c.color }}
-                >
-                  {c.icon}
-                </div>
-                <div className="body">
-                  <div className="t">{c.name}</div>
-                  <div className="d">{fmtNum(c.pct, 1)}%</div>
-                </div>
-                <div className="end">
-                  <div className="amt num">
-                    {mask(privacy, fmtVnd(c.amount))}đ
-                  </div>
-                  <div className="d" style={{ textAlign: 'right' }}>
-                    {fmtNum(c.pct, 1)} %
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </>
-      )}
-
-      <div className="sec" style={{ marginTop: 18 }}>
-        <h2>Gần đây</h2>
-        <button type="button" onClick={() => setScreen('spend-form')}>
+          <span className="spend-home__cta-ico" aria-hidden>
+            <AppIcon name="plus" size={22} />
+          </span>
           Ghi chi
         </button>
-      </div>
+      </section>
 
-      {dayGroups.length === 0 ? (
-        <div className="group">
-          <div className="row" style={{ color: 'var(--muted)' }}>
-            Chưa có khoản chi
-          </div>
+      <section className="spend-home__section" aria-labelledby="spend-cat-heading">
+        <div className="spend-home__section-head">
+          <h2 id="spend-cat-heading">Theo danh mục</h2>
         </div>
-      ) : (
-        dayGroups.map((g) => (
-          <div key={g.dayKey} className="spend-day-block">
-            <div className="spend-day-head">
-              <span className="spend-day-label">{g.label}</span>
-              <span className="spend-day-sum">
-                {g.totalExpense > 0 && (
-                  <span className="down">
-                    −{mask(privacy, fmtVnd(g.totalExpense, true))}
-                  </span>
-                )}
-                {g.totalIncome > 0 && (
-                  <span className="up">
-                    +{mask(privacy, fmtVnd(g.totalIncome, true))}
-                  </span>
-                )}
-              </span>
-            </div>
-            <div className="group">
-              {g.items.map((e) => {
-                const cat = categories.find((c) => c.id === e.categoryId)
-                const isOut = e.kind === 'expense'
-                return (
-                  <button
-                    key={e.id}
-                    type="button"
-                    className="row"
-                    onClick={() => setScreen('spend-detail', e.id)}
-                  >
-                    <div
-                      className="mark"
-                      style={{
-                        background: `${cat?.color || '#888'}22`,
-                        color: cat?.color || '#888',
-                      }}
-                    >
-                      {cat?.icon || '?'}
-                    </div>
-                    <div className="body">
-                      <div className="t">{cat?.name || '—'}</div>
-                      <div className="d">
-                        {new Date(e.spentAt).toLocaleTimeString('vi-VN', {
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        })}
-                        {e.note ? ` · ${e.note}` : ''}
-                      </div>
-                    </div>
-                    <div className="end">
-                      <div className={`amt num ${isOut ? 'down' : 'up'}`}>
-                        {isOut ? '−' : '+'}
-                        {mask(privacy, fmtVnd(e.amount, true))}
-                      </div>
-                    </div>
-                    <span className="chev">›</span>
-                  </button>
-                )
-              })}
-            </div>
+
+        {sum.byCat.length === 0 ? (
+          <div className="spend-home__empty">
+            <p className="spend-home__empty-title">Chưa có chi tháng này</p>
+            <p className="spend-home__empty-copy">
+              Ghi chi để xem phân bổ theo danh mục.
+            </p>
           </div>
-        ))
-      )}
+        ) : (
+          <div className="spend-home__breakdown">
+            <div
+              className="spend-home__donut"
+              style={{ background: donut }}
+              aria-hidden
+            >
+              <div className="spend-home__donut-hole">
+                <span>{sum.byCat.length}</span>
+                <small>nhóm</small>
+              </div>
+            </div>
+
+            <ul className="spend-home__cats">
+              {sum.byCat.map((c) => (
+                <li key={c.categoryId} className="spend-home__cat">
+                  <span
+                    className="spend-home__cat-mark"
+                    style={{ ['--swatch']: c.color  } as CSSProperties}
+                    aria-hidden
+                  >
+                    {c.icon}
+                  </span>
+                  <div className="spend-home__cat-main">
+                    <div className="spend-home__cat-row">
+                      <span className="spend-home__cat-name">{c.name}</span>
+                      <span className="spend-home__cat-amt num">
+                        {mask(privacy, fmtVnd(c.amount))}
+                      </span>
+                    </div>
+                    <div className="spend-home__cat-track" aria-hidden>
+                      <div
+                        className="spend-home__cat-fill"
+                        style={
+                          {
+                            width: `${Math.min(100, Math.max(2, c.pct))}%`,
+                            ['--swatch']: c.color,
+                          } as CSSProperties
+                        }
+                      />
+                    </div>
+                    <span className="spend-home__cat-pct">
+                      {fmtNum(c.pct, 1)}%
+                    </span>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </section>
+
+      <section className="spend-home__section" aria-labelledby="spend-recent-heading">
+        <div className="spend-home__section-head">
+          <h2 id="spend-recent-heading">Gần đây</h2>
+        </div>
+
+        {dayGroups.length === 0 ? (
+          <div className="spend-home__empty spend-home__empty--soft">
+            <p className="spend-home__empty-copy">Chưa có khoản chi</p>
+          </div>
+        ) : (
+          dayGroups.map((g) => (
+            <div key={g.dayKey} className="spend-home__day">
+              <div className="spend-home__day-head">
+                <span className="spend-home__day-label">{g.label}</span>
+                <span className="spend-home__day-sum">
+                  {g.totalExpense > 0 && (
+                    <span className="num down">
+                      −{mask(privacy, fmtVnd(g.totalExpense))}
+                    </span>
+                  )}
+                  {g.totalIncome > 0 && (
+                    <span className="num up">
+                      +{mask(privacy, fmtVnd(g.totalIncome))}
+                    </span>
+                  )}
+                </span>
+              </div>
+              <div className="spend-home__day-list">
+                {g.items.map((e) => {
+                  const cat = categories.find((c) => c.id === e.categoryId)
+                  const isOut = e.kind === 'expense'
+                  return (
+                    <button
+                      key={e.id}
+                      type="button"
+                      className="spend-home__tx"
+                      onClick={() => setScreen('spend-detail', e.id)}
+                    >
+                      <span
+                        className="spend-home__cat-mark"
+                        style={{ ['--swatch']: cat?.color || 'var(--color-muted)',
+                         } as CSSProperties}
+                        aria-hidden
+                      >
+                        {cat?.icon || '?'}
+                      </span>
+                      <span className="spend-home__tx-body">
+                        <span className="spend-home__tx-title">
+                          {cat?.name || 'Khác'}
+                        </span>
+                        <span className="spend-home__tx-sub">
+                          {new Date(e.spentAt).toLocaleTimeString('vi-VN', {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}
+                          {e.note ? ` · ${e.note}` : ''}
+                        </span>
+                      </span>
+                      <span
+                        className={`spend-home__tx-amt num ${isOut ? 'down' : 'up'}`}
+                      >
+                        {isOut ? '−' : '+'}
+                        {mask(privacy, fmtVnd(e.amount))}
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          ))
+        )}
+      </section>
     </div>
   )
 }
@@ -410,7 +426,6 @@ export function SpendForm() {
 
   return (
     <div className="scroll spend-form-page">
-      {/* Segment Tiền chi / Tiền thu */}
       <div className="spend-form-top">
         <div className="spend-kind-seg" role="tablist" aria-label="Loại">
           <button
@@ -438,12 +453,26 @@ export function SpendForm() {
           aria-label="Đóng"
           onClick={() => setScreen('spend')}
         >
-          ✕
+          <AppIcon name="close" size={19} />
         </button>
       </div>
 
-      <div className="spend-form-fields">
-        {/* Ngày */}
+      {/* Số tiền đứng riêng · trọng tâm form */}
+      <section className="spend-form-block spend-form-block--amount">
+        <div className="spend-form-block-label">{amountLabel}</div>
+        <div className="spend-amount-field">
+          <MoneyInput
+            value={amount}
+            onChange={setAmount}
+                        placeholder="0"
+            className="spend-amount-input"
+            ariaLabel={amountLabel}
+          />
+        </div>
+      </section>
+
+      {/* Ngày + ghi chú · một card, hàng thoáng */}
+      <section className="spend-form-block">
         <div className="spend-form-row">
           <span className="spend-form-lab">Ngày</span>
           <div className="spend-date-nav">
@@ -452,7 +481,7 @@ export function SpendForm() {
               aria-label="Ngày trước"
               onClick={() => setSpentAt((v) => shiftDayLocal(v, -1))}
             >
-              ‹
+              <AppIcon name="arrow-left" size={18} />
             </button>
             <label className="spend-date-pill">
               <span>{formatDayLabel(spentAt)}</span>
@@ -468,85 +497,72 @@ export function SpendForm() {
               aria-label="Ngày sau"
               onClick={() => setSpentAt((v) => shiftDayLocal(v, 1))}
             >
-              ›
+              <AppIcon name="chevron-right" size={18} />
             </button>
           </div>
         </div>
-
-        {/* Ghi chú */}
         <div className="spend-form-row">
           <span className="spend-form-lab">Ghi chú</span>
           <input
             className="spend-form-input"
             value={note}
             onChange={(e) => setNote(e.target.value)}
-            placeholder="Chưa nhập vào"
+            placeholder="Tuỳ chọn"
           />
         </div>
+      </section>
 
-        {/* Số tiền */}
-        <div className="spend-form-row spend-amount-row">
-          <span className="spend-form-lab">{amountLabel}</span>
-          <div className="spend-amount-field">
-            <MoneyInput
-              value={amount}
-              onChange={setAmount}
-              unit="đ"
-              placeholder="0"
-              className="spend-amount-input"
-            />
-          </div>
+      <section className="spend-form-block spend-form-block--cats">
+        <div className="spend-form-block-head">
+          <div className="spend-form-block-label">Danh mục</div>
+          <button
+            type="button"
+            className="spend-form-manage"
+            onClick={() => setScreen('spend-categories')}
+          >
+            Quản lý
+          </button>
         </div>
-      </div>
-
-      {/* Danh mục — lưới 3 cột icon */}
-      <div className="spend-form-cat-head">Danh mục</div>
-      <div className="spend-cat-tiles">
-        {cats.map((c) => {
-          const on = categoryId === c.id
-          return (
-            <button
-              key={c.id}
-              type="button"
-              className={`spend-cat-tile ${on ? 'on' : ''}`}
-              onClick={() => setCategoryId(c.id)}
-              style={
-                {
-                  ['--tile-color' as string]: c.color,
-                  ['--tile-soft' as string]: `${c.color}18`,
-                } as React.CSSProperties
-              }
-            >
-              <span className="tile-ico-wrap">
-                <span className="tile-ico" style={{ color: c.color }}>
-                  {c.icon}
+        <div className="spend-cat-tiles">
+          {cats.map((c) => {
+            const on = categoryId === c.id
+            return (
+              <button
+                key={c.id}
+                type="button"
+                className={`spend-cat-tile ${on ? 'on' : ''}`}
+                onClick={() => setCategoryId(c.id)}
+                style={
+                  {
+                    ['--tile-color']: c.color,
+                    ['--tile-soft']: `${c.color}18`,
+                  } as CSSProperties
+                }
+              >
+                <span className="tile-ico-wrap">
+                  <span className="tile-ico" style={{ color: c.color }}>
+                    {c.icon}
+                  </span>
                 </span>
-              </span>
-              <span className="tile-name">{c.name}</span>
-            </button>
-          )
-        })}
-        <button
-          type="button"
-          className="spend-cat-tile spend-cat-edit"
-          onClick={() => setScreen('spend-categories')}
-        >
-          <span className="tile-ico-wrap">
-            <span className="tile-ico">＋</span>
-          </span>
-          <span className="tile-name">
-            Chỉnh sửa <span className="tile-chev">›</span>
-          </span>
-        </button>
-      </div>
+                <span className="tile-name">{c.name}</span>
+              </button>
+            )
+          })}
+        </div>
+      </section>
 
-      {/* Link tiền mặt — gọn */}
-      <div className="spend-form-linkcash">
+      <section className="spend-form-linkcash">
         <div>
           <div className="t">
             {isExpense ? 'Trừ tiền mặt VND' : 'Cộng tiền mặt VND'}
           </div>
-          <div className="d">Đồng bộ sổ tài sản (tùy chọn)</div>
+          <div className="d">
+            {linkCash
+              ? isExpense
+                ? 'Trừ sổ tài sản · đừng rút VND tay thêm'
+                : 'Cộng sổ tài sản · đừng nạp VND tay thêm'
+              : 'Chỉ sổ chi tiêu · không đụng tiền mặt tài sản'}
+          </div>
         </div>
         <button
           type="button"
@@ -554,9 +570,8 @@ export function SpendForm() {
           onClick={() => setLinkCash((v) => !v)}
           aria-label="Link cash"
         />
-      </div>
+      </section>
 
-      {/* Spacer cho sticky CTA */}
       <div className="spend-form-cta-space" />
 
       <div className="spend-form-cta-bar">
@@ -590,7 +605,8 @@ export function SpendDetail({ privacy }: { privacy: boolean }) {
     return (
       <div className="scroll">
         <button type="button" className="back" onClick={() => setScreen('spend')}>
-          ‹ Chi tiêu
+          <AppIcon name="arrow-left" size={18} />
+          Chi tiêu
         </button>
         <div className="empty">
           <h3>Không tìm thấy</h3>
@@ -603,7 +619,8 @@ export function SpendDetail({ privacy }: { privacy: boolean }) {
     <div className="scroll">
       <div className="nav">
         <button type="button" className="back" onClick={() => setScreen('spend')}>
-          ‹ Chi tiêu
+          <AppIcon name="arrow-left" size={18} />
+          Chi tiêu
         </button>
       </div>
       <div className="large-title">
@@ -611,11 +628,11 @@ export function SpendDetail({ privacy }: { privacy: boolean }) {
         <div className="sub">{yearMonthOf(e.spentAt)} · Chi</div>
       </div>
 
-      <div className="card" style={{ padding: 16, marginBottom: 12 }}>
-        <div className="num down" style={{ fontSize: 28, fontWeight: 750 }}>
-          −{mask(privacy, fmtVnd(e.amount))} đ
+      <div className="card detail-card">
+        <div className="num down amount-xl">
+          −{mask(privacy, fmtVnd(e.amount))}
         </div>
-        <div style={{ marginTop: 8, color: 'var(--muted)', fontSize: 13 }}>
+        <div className="detail-meta">
           {new Date(e.spentAt).toLocaleString('vi-VN')}
           {e.linkCash ? ' · Đã trừ tiền mặt' : ' · Chỉ sổ chi tiêu'}
         </div>
@@ -637,9 +654,8 @@ export function SpendDetail({ privacy }: { privacy: boolean }) {
       </button>
 
       <button
-        className="btn-secondary"
+        className="btn-secondary btn-danger"
         type="button"
-        style={{ marginTop: 12, color: 'var(--down)' }}
         onClick={() => {
           if (
             !window.confirm(
@@ -761,7 +777,8 @@ export function SpendCategories() {
           className="back"
           onClick={() => setScreen('spend-form')}
         >
-          ‹ Ghi chi
+          <AppIcon name="arrow-left" size={18} />
+          Ghi chi
         </button>
       </div>
       <div className="large-title">
@@ -769,7 +786,7 @@ export function SpendCategories() {
         <div className="sub">Chạm dòng để sửa · chọn icon bên dưới</div>
       </div>
 
-      <div className="spend-kind-seg" style={{ margin: '0 0 14px' }}>
+      <div className="spend-kind-seg mb-sm">
         <button
           type="button"
           className={kind === 'expense' ? 'on' : ''}
@@ -801,8 +818,7 @@ export function SpendCategories() {
             onClick={() => openEdit(c.id)}
           >
             <div
-              className="mark"
-              style={{ background: `${c.color}22`, color: c.color }}
+              className="mark cat-swatch" style={{ ['--swatch']: c.color  } as CSSProperties}
             >
               {c.icon}
             </div>
@@ -811,11 +827,13 @@ export function SpendCategories() {
               <div className="d">{c.isSystem ? 'Mặc định' : 'Tự tạo'}</div>
             </div>
             <span className="link-btn">Sửa</span>
-            <span className="chev">›</span>
+            <span className="chev">
+              <AppIcon name="chevron-right" size={18} />
+            </span>
           </button>
         ))}
         {list.length === 0 && (
-          <div className="row" style={{ color: 'var(--muted)' }}>
+          <div className="row row-muted">
             Chưa có danh mục
           </div>
         )}
@@ -862,8 +880,8 @@ export function SpendCategories() {
             <button
               key={col}
               type="button"
-              className={`color-pick ${color === col ? 'on' : ''}`}
-              style={{ background: col }}
+              className={`color-pick cat-swatch-solid ${color === col ? 'on' : ''}`}
+              style={{ ['--swatch']: col  } as CSSProperties}
               onClick={() => setColor(col)}
               aria-label={col}
             />
@@ -872,7 +890,7 @@ export function SpendCategories() {
       </div>
 
       <div className="cat-preview">
-        <div className="mark" style={{ background: `${color}22`, color }}>
+        <div className="mark cat-swatch" style={{ ['--swatch']: color  } as CSSProperties}>
           {icon}
         </div>
         <span>{name.trim() || 'Tên danh mục'}</span>
@@ -884,9 +902,8 @@ export function SpendCategories() {
 
       {editing && editCat && !editCat.isSystem && (
         <button
-          className="btn-secondary"
+          className="btn-secondary btn-danger"
           type="button"
-          style={{ marginTop: 10, color: 'var(--down)' }}
           onClick={() => {
             if (!window.confirm('Ẩn danh mục này?')) return
             updateExpenseCategory(editId!, { archived: true })

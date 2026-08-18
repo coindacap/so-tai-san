@@ -1,21 +1,31 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useStore } from '../store/useStore'
-import { fmtNum, fmtVnd } from '../lib/format'
+import { AppIcon } from '../components/AppIcon'
+import { fmtNum, fmtSignedUsdt, fmtVnd } from '../lib/format'
+import {
+  kindLabel,
+  matchesHistoryFilter,
+  type HistoryFilter,
+} from '../lib/txLabels'
 
 export function History() {
   const transactions = useStore((s) => s.transactions)
   const assets = useStore((s) => s.assets)
+  const expenses = useStore((s) => s.expenses)
   const deleteTransaction = useStore((s) => s.deleteTransaction)
   const updateTransactionNote = useStore((s) => s.updateTransactionNote)
   const findPairIds = useStore((s) => s.findPairIds)
   const showToast = useStore((s) => s.showToast)
+  const goBack = useStore((s) => s.goBack)
   const byId = Object.fromEntries(assets.map((a) => [a.id, a]))
+  const labelCtx = useMemo(
+    () => ({ assets, expenses }),
+    [assets, expenses],
+  )
 
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [noteDraft, setNoteDraft] = useState('')
-  const [filter, setFilter] = useState<'all' | 'buy' | 'sell' | 'convert' | 'adjust'>(
-    'all',
-  )
+  const [filter, setFilter] = useState<HistoryFilter>('all')
 
   // de-dupe pair: 1 dòng / cặp — ưu tiên leg không phải VND
   const shown = useMemo(() => {
@@ -29,7 +39,6 @@ export function History() {
     for (const t of sorted) {
       if (t.pairId) {
         if (seenPair.has(t.pairId)) continue
-        // chọn leg "chính" trong cặp
         const mates = sorted.filter((x) => x.pairId === t.pairId)
         const primary =
           mates.find((x) => x.assetId !== 'asset-vnd') ||
@@ -52,9 +61,8 @@ export function History() {
       }
       out.push(t)
     }
-    if (filter === 'all') return out
-    return out.filter((t) => t.kind === filter)
-  }, [transactions, filter])
+    return out.filter((t) => matchesHistoryFilter(t, filter, labelCtx))
+  }, [transactions, filter, labelCtx])
 
   const selected = selectedId
     ? transactions.find((t) => t.id === selectedId)
@@ -65,35 +73,33 @@ export function History() {
     if (selected) setNoteDraft(selected.note || '')
   }, [selected])
 
-  function kindLabel(t: (typeof transactions)[0]) {
-    if (t.kind === 'adjust') return 'Điều chỉnh'
-    if (t.kind === 'convert') return t.side === 'in' ? 'Đổi · nhận' : 'Đổi · chi'
-    if (t.kind === 'buy') return t.side === 'in' ? 'Mua' : 'Chi (mua)'
-    if (t.kind === 'sell') return t.side === 'out' ? 'Bán' : 'Nhận (bán)'
-    return t.side === 'in' ? 'Nhận' : 'Chi'
-  }
-
   return (
     <div className="scroll">
-      <div className="large-title" style={{ paddingTop: 8 }}>
-        <h1>Lịch sử</h1>
-        <div className="sub">Bấm dòng để sửa ghi chú / xóa an toàn</div>
+      <div className="nav">
+        <button type="button" className="back" onClick={() => goBack()}>
+          <AppIcon name="arrow-left" size={18} />
+          Tài sản
+        </button>
+        <div className="mid">Lịch sử</div>
+        <div className="nav-spacer" />
+      </div>
+      <div className="large-title large-title-compact">
+        <h1>Lịch sử tài sản</h1>
+        <div className="sub">
+          Mua · bán · đổi · nạp/rút · gắn tiền mặt. Chi tiêu chi tiết xem tab
+          Chi tiêu.
+        </div>
       </div>
 
-      <div
-        className="seg"
-        style={{
-          margin: '0 0 12px',
-          gridTemplateColumns: 'repeat(5, 1fr)',
-        }}
-      >
+      <div className="seg seg-wrap">
         {(
           [
             ['all', 'Tất cả'],
             ['buy', 'Mua'],
             ['sell', 'Bán'],
             ['convert', 'Đổi'],
-            ['adjust', 'Điều chỉnh'],
+            ['cash_flow', 'Tiền mặt'],
+            ['adjust', 'Khác'],
           ] as const
         ).map(([k, lab]) => (
           <button
@@ -101,7 +107,6 @@ export function History() {
             type="button"
             className={filter === k ? 'on' : ''}
             onClick={() => setFilter(k)}
-            style={{ fontSize: 11, padding: '8px 4px' }}
           >
             {lab}
           </button>
@@ -111,7 +116,7 @@ export function History() {
       {shown.length === 0 ? (
         <div className="empty">
           <h3>Chưa có giao dịch</h3>
-          <p>Mọi lần mua nhẫn, đổi USDT, mua coin sẽ hiện ở đây.</p>
+          <p>Mọi lần mua nhẫn, đổi USDT, mua coin, nạp/rút sẽ hiện ở đây.</p>
         </div>
       ) : (
         <div className="group">
@@ -126,7 +131,10 @@ export function History() {
               >
                 <div className="body">
                   <div className="t">
-                    {kindLabel(t)} · {a?.symbol || '?'} · {fmtNum(t.qty, 6)}
+                    {kindLabel(t, labelCtx)} · {a?.symbol || '?'} ·{' '}
+                    {t.costBasisDeltaNative != null
+                      ? fmtSignedUsdt(t.costBasisDeltaNative, 4)
+                      : fmtNum(t.qty, 6)}
                   </div>
                   <div className="d">
                     {new Date(t.tradedAt).toLocaleString('vi-VN')}
@@ -136,12 +144,16 @@ export function History() {
                 </div>
                 <div className="end">
                   <div className={`amt num ${t.side === 'out' ? 'down' : ''}`}>
-                    {t.priceCurrency === 'VND'
-                      ? fmtVnd(t.qty * t.pricePerUnit, true)
-                      : `${fmtNum(t.counterQty || t.qty * t.pricePerUnit, 2)} U`}
+                    {t.costBasisDeltaNative != null
+                      ? fmtSignedUsdt(t.costBasisDeltaNative, 4)
+                      : t.priceCurrency === 'VND'
+                        ? fmtVnd(t.qty * t.pricePerUnit, true)
+                        : `${fmtNum(t.counterQty || t.qty * t.pricePerUnit, 2)} U`}
                   </div>
                 </div>
-                <span className="chev">›</span>
+                <span className="chev">
+                  <AppIcon name="chevron-right" size={18} />
+                </span>
               </button>
             )
           })}
@@ -153,37 +165,54 @@ export function History() {
           <div className="sheet" onClick={(e) => e.stopPropagation()}>
             <div className="grab" />
             <h3>
-              {kindLabel(selected)} · {byId[selected.assetId]?.symbol || '?'}
+              {kindLabel(selected, labelCtx)} ·{' '}
+              {byId[selected.assetId]?.symbol || '?'}
             </h3>
-            <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 12 }}>
+            <div className="sheet-meta">
               {new Date(selected.tradedAt).toLocaleString('vi-VN')}
               {selected.venue ? ` · ${selected.venue}` : ''}
               {pairCount > 1 ? ` · ${pairCount} leg (xóa cả cặp)` : ''}
             </div>
-            <div className="card" style={{ marginBottom: 12 }}>
-              <div className="switch-row">
-                <span>Số lượng</span>
-                <span className="num" style={{ fontWeight: 700 }}>
-                  {fmtNum(selected.qty, 6)} {byId[selected.assetId]?.unit}
-                </span>
-              </div>
-              <div className="switch-row">
-                <span>Giá / đơn vị</span>
-                <span className="num" style={{ fontWeight: 700 }}>
-                  {selected.priceCurrency === 'VND'
-                    ? `${fmtVnd(selected.pricePerUnit)} đ`
-                    : `${fmtNum(selected.pricePerUnit, 4)} USDT`}
-                </span>
-              </div>
-              {selected.counterQty > 0 && (
+            <div className="card mb-sm">
+              {selected.costBasisDeltaNative != null ? (
                 <div className="switch-row">
-                  <span>Đối ứng</span>
-                  <span className="num" style={{ fontWeight: 700 }}>
-                    {fmtNum(selected.counterQty, 4)}{' '}
-                    {byId[selected.counterAssetId]?.symbol || ''}
+                  <span>Điều chỉnh tổng giá vốn</span>
+                  <span className="num switch-value">
+                    {fmtSignedUsdt(selected.costBasisDeltaNative, 4)}
                   </span>
                 </div>
+              ) : (
+                <>
+                  <div className="switch-row">
+                    <span>Số lượng</span>
+                    <span className="num switch-value">
+                      {fmtNum(selected.qty, 6)}
+                      {(() => {
+                        const u = byId[selected.assetId]?.unit
+                        return u && u !== 'VND' && u !== 'đ' ? ` ${u}` : ''
+                      })()}
+                    </span>
+                  </div>
+                  <div className="switch-row">
+                    <span>Giá / đơn vị</span>
+                    <span className="num switch-value">
+                      {selected.priceCurrency === 'VND'
+                        ? `${fmtVnd(selected.pricePerUnit)}`
+                        : `${fmtNum(selected.pricePerUnit, 4)} USDT`}
+                    </span>
+                  </div>
+                </>
               )}
+              {selected.costBasisDeltaNative == null &&
+                selected.counterQty > 0 && (
+                  <div className="switch-row">
+                    <span>Đối ứng</span>
+                    <span className="num switch-value">
+                      {fmtNum(selected.counterQty, 4)}{' '}
+                      {byId[selected.counterAssetId]?.symbol || ''}
+                    </span>
+                  </div>
+                )}
             </div>
             <div className="field">
               <label>Ghi chú</label>
@@ -191,7 +220,7 @@ export function History() {
                 value={noteDraft}
                 onChange={(e) => setNoteDraft(e.target.value)}
                 placeholder="Tuỳ chọn"
-                style={{ fontSize: 16, fontWeight: 600 }}
+                className="field-control-sm"
               />
             </div>
             <button
@@ -210,13 +239,8 @@ export function History() {
               Lưu ghi chú
             </button>
             <button
-              className="btn-secondary"
+              className="btn-secondary btn-danger mt-xs"
               type="button"
-              style={{
-                marginTop: 8,
-                color: 'var(--down)',
-                borderColor: 'rgba(255,59,48,0.35)',
-              }}
               onClick={() => {
                 if (
                   !confirm(
@@ -252,8 +276,7 @@ export function History() {
           </div>
         </div>
       )}
+      <div className="scroll-end-spacer" aria-hidden />
     </div>
   )
 }
-
-

@@ -2,7 +2,7 @@
  * Tự động lấy giá:
  * - Coin: Binance spot (SYMBOLUSDT)
  * - USDT/VND: Binance P2P (fallback CoinGecko / USD-VND)
- * - Vàng nhẫn 9999: ước từ giá vàng thế giới (XAU) → đ/chỉ (tạm)
+ * - Vàng nhẫn 9999: ước từ giá vàng thế giới (XAU) → /chỉ (tạm)
  */
 
 const BINANCE = 'https://api.binance.com/api/v3'
@@ -169,7 +169,7 @@ async function fetchUsdtVndFallback(): Promise<{
   return null
 }
 
-/** Vàng: XAU/USD → đ/chỉ 9999 (ước thị trường, có spread mua/bán) */
+/** Vàng: XAU/USD → /chỉ 9999 (ước thị trường, có spread mua/bán) */
 async function fetchGoldNhanPerChi(usdtVnd: number | null): Promise<{
   bid: number
   ask: number
@@ -227,13 +227,13 @@ export async function fetchLivePrices(
     if (p2p) {
       usdtVnd = p2p.price
       usdtLabel = p2p.label
-      notes.push(`USDT ${usdtVnd.toLocaleString('vi-VN')}đ · ${usdtLabel}`)
+      notes.push(`USDT ${usdtVnd.toLocaleString('vi-VN')} · ${usdtLabel}`)
     } else {
       const fb = await fetchUsdtVndFallback()
       if (fb) {
         usdtVnd = fb.price
         usdtLabel = fb.label
-        notes.push(`USDT ${usdtVnd.toLocaleString('vi-VN')}đ · ${usdtLabel}`)
+        notes.push(`USDT ${usdtVnd.toLocaleString('vi-VN')} · ${usdtLabel}`)
       } else {
         errors.push('Không lấy được USDT/VND')
       }
@@ -263,7 +263,7 @@ export async function fetchLivePrices(
       goldAsk = g.ask
       goldLabel = g.label
       notes.push(
-        `Vàng ~${g.bid.toLocaleString('vi-VN')}–${g.ask.toLocaleString('vi-VN')} đ/chỉ · ${g.label}`,
+        `Vàng ~${g.bid.toLocaleString('vi-VN')}–${g.ask.toLocaleString('vi-VN')}/chỉ · ${g.label}`,
       )
     } else {
       errors.push('Không lấy được giá vàng')

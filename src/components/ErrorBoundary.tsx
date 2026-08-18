@@ -1,4 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
+import { AppIcon } from './AppIcon'
+import { StatePanel } from './StatePanel'
 
 type Props = { children: ReactNode; onReset?: () => void }
 type State = { error: Error | null }
@@ -18,21 +20,50 @@ export class ErrorBoundary extends Component<Props, State> {
   render() {
     if (this.state.error) {
       return (
-        <div className="scroll plain" style={{ paddingTop: 48, textAlign: 'center' }}>
-          <h3 style={{ marginBottom: 8 }}>Có lỗi hiển thị màn này</h3>
-          <p style={{ color: 'var(--muted)', fontSize: 14, lineHeight: 1.45, marginBottom: 16 }}>
-            {this.state.error.message || 'Lỗi không xác định'}
-          </p>
-          <button
-            type="button"
-            className="btn-primary"
-            onClick={() => {
-              this.setState({ error: null })
-              this.props.onReset?.()
-            }}
-          >
-            Về trang chủ
-          </button>
+        <div className="scroll plain app-state-screen">
+          <StatePanel
+            tone="error"
+            title="Không thể hiển thị nội dung"
+            message="Thử về trang chính. Nếu vẫn lỗi, tải lại trang để nhận bản mới."
+            action={
+              <>
+                <button
+                  type="button"
+                  className="btn-primary"
+                  onClick={() => {
+                    this.setState({ error: null })
+                    this.props.onReset?.()
+                  }}
+                >
+                  <AppIcon name="arrow-left" size={18} />
+                  Về trang chính
+                </button>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => {
+                    void (async () => {
+                      try {
+                        if ('serviceWorker' in navigator) {
+                          const regs = await navigator.serviceWorker.getRegistrations()
+                          await Promise.all(regs.map((r) => r.unregister()))
+                        }
+                        if ('caches' in window) {
+                          const keys = await caches.keys()
+                          await Promise.all(keys.map((k) => caches.delete(k)))
+                        }
+                      } catch {
+                        /* ignore */
+                      }
+                      location.reload()
+                    })()
+                  }}
+                >
+                  Tải lại ứng dụng
+                </button>
+              </>
+            }
+          />
         </div>
       )
     }

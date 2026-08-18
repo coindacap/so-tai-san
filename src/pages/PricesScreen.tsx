@@ -3,6 +3,7 @@ import { useStore } from '../store/useStore'
 import { nowIso, moneyNum } from '../lib/format'
 import { MoneyInput } from '../components/MoneyInput'
 import { useAutoPrices } from '../hooks/useAutoPrices'
+import { AppIcon } from '../components/AppIcon'
 
 export function Prices() {
   const setQuote = useStore((s) => s.setQuote)
@@ -55,7 +56,7 @@ export function Prices() {
         forceGold: includeGoldInStore || !!settings.autoGoldPrice,
       })
       if (!live) {
-        showToast('Không lấy được giá — kiểm tra mạng')
+        showToast('Không lấy được giá, kiểm tra mạng')
         return
       }
       if (live.usdtVnd) setUsdtP(String(live.usdtVnd))
@@ -73,7 +74,7 @@ export function Prices() {
       })
       const parts = [
         live.usdtVnd
-          ? `USDT ${live.usdtVnd.toLocaleString('vi-VN')}đ`
+          ? `USDT ${live.usdtVnd.toLocaleString('vi-VN')}`
           : null,
         Object.keys(live.coins).length
           ? `Coin ${Object.keys(live.coins).length} mã`
@@ -81,7 +82,7 @@ export function Prices() {
         includeGoldInStore || settings.autoGoldPrice
           ? 'Đã áp giá vàng ước'
           : live.goldBid
-            ? 'Vàng điền form (chưa ghi sổ — bấm Lưu giá)'
+            ? 'Vàng điền form (chưa ghi sổ, bấm Lưu giá)'
             : null,
       ].filter(Boolean)
       showToast(parts.join(' · ') || live.errors[0] || 'Đã lấy giá live')
@@ -94,42 +95,41 @@ export function Prices() {
     <div className="scroll plain">
       <div className="nav">
         <button className="back" onClick={() => setScreen('home')}>
-          ‹ Huỷ
+          <AppIcon name="arrow-left" size={18} />
+          Huỷ
         </button>
         <div className="mid">Cập nhật giá</div>
-        <div style={{ minWidth: 64 }} />
+        <div className="nav-spacer" />
       </div>
 
-      <div className="card" style={{ marginBottom: 12 }}>
-        <div style={{ padding: 14, fontSize: 13, lineHeight: 1.45 }}>
-          <div style={{ fontWeight: 700, marginBottom: 6 }}>
+      <div className="card mb-sm">
+        <div className="note-box">
+          <div className="weight-bold mb-sm">
             Tự động giá
           </div>
-          <div style={{ color: 'var(--muted)' }}>
+          <div className="row-muted">
             <b>Coin + USDT</b> luôn auto Binance (~3 phút).{' '}
-            <b>Vàng nhẫn</b> mặc định <b>không auto</b> — giữ giá tiệm/tay, tránh
+            <b>Vàng nhẫn</b> mặc định <b>không auto</b>, giữ giá tiệm/tay, tránh
             P/L lệch.
           </div>
         </div>
         <div className="switch-row">
           <div>
-            <div style={{ fontWeight: 650 }}>Auto giá vàng (ước XAU)</div>
-            <div style={{ fontSize: 12, color: 'var(--muted)' }}>
+            <div className="switch-title">Auto giá vàng (ước XAU)</div>
+            <div className="switch-desc">
               Bật thì mỗi lần refresh ghi đè giá nhẫn
             </div>
           </div>
-          <button
-            className="btn-secondary"
-            type="button"
-            style={{ width: 'auto', margin: 0, padding: '8px 14px', fontSize: 14 }}
-            onClick={() =>
+          <button className="btn-secondary btn-compact"
+ type="button"
+ onClick={() =>
               updateSettings({ autoGoldPrice: !settings.autoGoldPrice })
             }
           >
             {settings.autoGoldPrice ? 'Đang bật' : 'Tắt'}
           </button>
         </div>
-        <div style={{ padding: '0 14px 14px', display: 'grid', gap: 8 }}>
+        <div className="sheet-stack">
           <button
             className="btn-primary"
             type="button"
@@ -138,34 +138,32 @@ export function Prices() {
           >
             {fetching ? 'Đang lấy giá…' : 'Lấy coin + USDT live'}
           </button>
-          <button
-            className="btn-secondary"
-            type="button"
-            style={{ margin: 0 }}
-            disabled={fetching || autoStatus === 'loading'}
-            onClick={() => void pullLive(true)}
+          <button className="btn-secondary"
+ type="button"
+ disabled={fetching || autoStatus === 'loading'}
+ onClick={() => void pullLive(true)}
           >
             Lấy + áp giá vàng ước vào sổ
           </button>
         </div>
       </div>
 
-      <div className="sec" style={{ marginTop: 4 }}>
+      <div className="sec sec-tight">
         <h2>Nhẫn 9999 · 2 chiều</h2>
       </div>
       <div className="card">
         <div className="field">
-          <label>Mua vào (đ/chỉ)</label>
-          <MoneyInput value={bid} onChange={setBid} unit="đ/chỉ" />
+          <label>Mua vào (/chỉ)</label>
+          <MoneyInput value={bid} onChange={setBid} unit="chỉ" />
           <div className="hint">Tiệm mua lại · dùng cho P/L hold</div>
         </div>
         <div className="field">
-          <label>Bán ra (đ/chỉ)</label>
-          <MoneyInput value={ask} onChange={setAsk} unit="đ/chỉ" />
+          <label>Bán ra (/chỉ)</label>
+          <MoneyInput value={ask} onChange={setAsk} unit="chỉ" />
         </div>
         <div className="field">
           <label>Tiệm / nguồn</label>
-          <input value={label} onChange={(e) => setLabel(e.target.value)} style={{ fontSize: 17, fontWeight: 600 }} />
+          <input value={label} onChange={(e) => setLabel(e.target.value)} className="field-control" />
         </div>
       </div>
       <div className="sec">
@@ -174,7 +172,7 @@ export function Prices() {
       <div className="card">
         <div className="field">
           <label>VND / 1 USDT</label>
-          <MoneyInput value={usdtP} onChange={setUsdtP} unit="đ" />
+          <MoneyInput value={usdtP} onChange={setUsdtP} />
           <div className="hint">Mặc định lấy Binance P2P · có thể sửa tay</div>
         </div>
       </div>
@@ -203,7 +201,7 @@ export function Prices() {
       )}
       <button
         className="btn-primary"
-        onClick={() => {
+          onClick={() => {
           const t = nowIso()
           setQuote({
             assetId: gold.id,
@@ -243,5 +241,4 @@ export function Prices() {
     </div>
   )
 }
-
 

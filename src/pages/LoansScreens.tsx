@@ -14,6 +14,7 @@ import {
 } from '../lib/format'
 import type { Loan, LoanInterestType } from '../types'
 import { MoneyInput } from '../components/MoneyInput'
+import { AppIcon } from '../components/AppIcon'
 import { mask } from '../lib/ui'
 
 export function LoansList({ privacy }: { privacy: boolean }) {
@@ -42,54 +43,55 @@ export function LoansList({ privacy }: { privacy: boolean }) {
   )
 
   return (
-    <div className="scroll">
-      <div className="large-title" style={{ paddingTop: 8 }}>
+    <div className="scroll wb-page loans-page">
+      <div className="large-title">
         <h1>Cho vay</h1>
         <div className="sub">Khoản còn phải thu</div>
       </div>
 
-      <div className="loan-hero">
-        <div className="loan-hero-label">Tổng còn thu</div>
-        <div className="loan-hero-total num">
+      <section className="wb-hero" aria-label="Tổng còn thu">
+        <p className="wb-hero__label">Tổng còn thu</p>
+        <p className="wb-hero__amount num">
           {mask(privacy, fmtVnd(total))}
-          <small>đ</small>
+
+        </p>
+        <div className="wb-hero__stats">
+          <div className="wb-hero__stat">
+            <span className="wb-hero__stat-k">Số khoản</span>
+            <span className="wb-hero__stat-v num">{open.length}</span>
+          </div>
+          <div className="wb-hero__stat">
+            <span className="wb-hero__stat-k">Đã thu gốc</span>
+            <span className="wb-hero__stat-v num">
+              {mask(privacy, fmtVnd(Math.max(0, collected)))}
+            </span>
+          </div>
+          <div className="wb-hero__stat">
+            <span className="wb-hero__stat-k">Lãi tạm tính</span>
+            <span className="wb-hero__stat-v num">
+              {mask(privacy, fmtVnd(Math.round(accrued)))}
+            </span>
+          </div>
         </div>
-        <div className="loan-hero-grid">
-          <div>
-            <div className="k">Số khoản</div>
-            <div className="v num">{open.length}</div>
-          </div>
-          <div>
-            <div className="k">Đã thu (gốc)</div>
-            <div className="v num">
-              {mask(privacy, fmtVnd(Math.max(0, collected), true))}
-            </div>
-          </div>
-          <div>
-            <div className="k">Lãi tạm tính</div>
-            <div className="v num">
-              {mask(privacy, fmtVnd(accrued, true))}
-            </div>
-          </div>
-        </div>
-        {overdueN > 0 && (
-          <div className="loan-due-banner over" style={{ marginTop: 12 }}>
+        {overdueN > 0 ? (
+          <div className="wb-hero__alert" role="status">
             {overdueN} khoản đang trễ hạn
           </div>
-        )}
-      </div>
+        ) : null}
+      </section>
 
-      <div className="btn-row" style={{ marginBottom: 14 }}>
+      <div className="btn-row">
         <button
+          type="button"
           className="btn-primary"
-          style={{ margin: 0 }}
           onClick={() => setScreen('loan-form')}
         >
-          + Cho vay mới
+          <AppIcon name="plus" size={18} />
+          Cho vay mới
         </button>
         <button
+          type="button"
           className="btn-secondary"
-          style={{ margin: 0 }}
           onClick={() => setScreen('loans-trash')}
         >
           Thùng rác{trashCount ? ` (${trashCount})` : ''}
@@ -112,7 +114,6 @@ export function LoansList({ privacy }: { privacy: boolean }) {
   )
 }
 
-
 export function LoanRow({ l, privacy }: { l: Loan; privacy: boolean }) {
   const setScreen = useStore((s) => s.setScreen)
   const due = daysUntil(l.dueDate)
@@ -120,6 +121,16 @@ export function LoanRow({ l, privacy }: { l: Loan; privacy: boolean }) {
     l.principal > 0
       ? Math.round(((l.principal - l.remaining) / l.principal) * 100)
       : 0
+  const paidPrincipal = Math.max(0, l.principal - l.remaining)
+  const interestInfo = calcLoanOutstandingInterest(l)
+  const accrued = Math.round(interestInfo.outstanding)
+  const interestPaid = Math.round(l.interestPaid || 0)
+  const lendLabel = new Date(l.lendDate).toLocaleDateString('vi-VN')
+  const rateLabel = loanInterestLabel({
+    rateAnnual: l.rateAnnual,
+    interestType: l.interestType,
+    interestValue: l.interestValue,
+  })
   const initials = l.borrower
     .split(/\s+/)
     .filter(Boolean)
@@ -129,6 +140,7 @@ export function LoanRow({ l, privacy }: { l: Loan; privacy: boolean }) {
     .slice(0, 2) || 'V'
   const overdue = due != null && due < 0
   const urgent = due != null && due >= 0 && due <= 7
+  const statusLabel = l.status === 'partial' ? 'Thu một phần' : 'Đang vay'
 
   return (
     <button
@@ -141,25 +153,47 @@ export function LoanRow({ l, privacy }: { l: Loan; privacy: boolean }) {
         <div className="loan-card-mid">
           <div className="loan-card-name">{l.borrower}</div>
           <div className="loan-card-meta">
-            {l.status === 'partial' ? 'Thu một phần' : 'Đang vay'}
+            {statusLabel}
             {' · '}
-            {loanInterestLabel({
-              rateAnnual: l.rateAnnual,
-              interestType: l.interestType,
-              interestValue: l.interestValue,
-            })}
+            {rateLabel}
             {l.phone ? ` · ${l.phone}` : ''}
           </div>
         </div>
         <div className="loan-card-amt">
           <div className="num">{mask(privacy, fmtVnd(l.remaining))}</div>
-          <div className="unit">còn thu</div>
+          <div className="unit">còn thu (gốc)</div>
         </div>
       </div>
+
+      <div className="loan-card-facts" aria-label="Chi tiết khoản vay">
+        <div className="loan-fact">
+          <span className="loan-fact-k">Ngày vay</span>
+          <span className="loan-fact-v">{lendLabel}</span>
+        </div>
+        <div className="loan-fact">
+          <span className="loan-fact-k">
+            Lãi tạm
+            {interestInfo.days > 0 ? ` · ${interestInfo.days}n` : ''}
+          </span>
+          <span className={`loan-fact-v num ${accrued > 0 ? 'loan-fact-v--accrued' : ''}`}>
+            {mask(privacy, fmtVnd(accrued))}
+          </span>
+        </div>
+        <div className="loan-fact">
+          <span className="loan-fact-k">Đã thu lãi</span>
+          <span className="loan-fact-v num">
+            {mask(privacy, fmtVnd(interestPaid))}
+          </span>
+        </div>
+      </div>
+
       <div className="loan-card-bottom">
         <div className="loan-orig">
-          Gốc {mask(privacy, fmtVnd(l.principal, true))}
-          {paidPct > 0 ? ` · đã thu ${paidPct}%` : ''}
+          Gốc {mask(privacy, fmtVnd(l.principal))}
+          {paidPrincipal > 0
+            ? ` · đã thu gốc ${mask(privacy, fmtVnd(paidPrincipal))}`
+            : ''}
+          {paidPct > 0 ? ` (${paidPct}%)` : ''}
         </div>
         <div className={`loan-due ${overdue ? 'over' : urgent ? 'warn' : ''}`}>
           {due == null
@@ -183,7 +217,6 @@ export function LoanRow({ l, privacy }: { l: Loan; privacy: boolean }) {
   )
 }
 
-
 export function LoanForm({ mode }: { mode: 'create' | 'edit' }) {
   const addLoan = useStore((s) => s.addLoan)
   const updateLoan = useStore((s) => s.updateLoan)
@@ -203,7 +236,7 @@ export function LoanForm({ mode }: { mode: 'create' | 'edit' }) {
   const [remaining, setRemaining] = useState(
     String(existing?.remaining ?? existing?.principal ?? 5000000),
   )
-  // 3 kiểu lãi chính: %/tháng | đ/1tr/ngày | cố định/tháng
+  // 3 kiểu lãi chính: %/tháng | /1tr/ngày | cố định/tháng
   const initType: LoanInterestType =
     existing?.interestType === 'per_million_daily' ||
     existing?.interestType === 'flat_monthly' ||
@@ -279,12 +312,13 @@ export function LoanForm({ mode }: { mode: 'create' | 'edit' }) {
     <div className="scroll plain">
       <div className="nav">
         <button className="back" onClick={() => goBack()}>
-          ‹ Huỷ
+          <AppIcon name="arrow-left" size={18} />
+          Huỷ
         </button>
         <div className="mid">
           {mode === 'edit' ? 'Sửa khoản vay' : 'Cho vay mới'}
         </div>
-        <div style={{ minWidth: 64 }} />
+        <div className="nav-spacer" />
       </div>
 
       <div className="card">
@@ -294,7 +328,7 @@ export function LoanForm({ mode }: { mode: 'create' | 'edit' }) {
             value={borrower}
             onChange={(e) => setBorrower(e.target.value)}
             placeholder="Tên / biệt danh"
-            style={{ fontSize: 17, fontWeight: 600 }}
+            className="field-control"
           />
         </div>
         <div className="field">
@@ -303,7 +337,7 @@ export function LoanForm({ mode }: { mode: 'create' | 'edit' }) {
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
             inputMode="tel"
-            style={{ fontSize: 17, fontWeight: 600 }}
+            className="field-control"
           />
         </div>
         <div className="field">
@@ -341,7 +375,7 @@ export function LoanForm({ mode }: { mode: 'create' | 'edit' }) {
           className={interestType === 'per_million_daily' ? 'on' : ''}
           onClick={() => pickType('per_million_daily')}
         >
-          <strong>đ / 1tr / ngày</strong>
+          <strong>/ 1tr / ngày</strong>
           <span>vd 1k/1tr/ngày</span>
         </button>
         <button
@@ -350,7 +384,7 @@ export function LoanForm({ mode }: { mode: 'create' | 'edit' }) {
           onClick={() => pickType('flat_monthly')}
         >
           <strong>Cố định / tháng</strong>
-          <span>vd 1.300.000đ</span>
+          <span>vd 1.300.000</span>
         </button>
       </div>
 
@@ -366,25 +400,24 @@ export function LoanForm({ mode }: { mode: 'create' | 'edit' }) {
               maxFraction={3}
             />
             <div className="hint">
-              Gốc {fmtVnd(remNum || pNum)}đ → lãi khoảng{' '}
-              <b>{fmtVnd(Math.round(previewMonth))}đ/tháng</b>
+              Gốc {fmtVnd(remNum || pNum)} → lãi khoảng{' '}
+              <b>{fmtVnd(Math.round(previewMonth))}/tháng</b>
             </div>
           </div>
         )}
         {interestType === 'per_million_daily' && (
           <div className="field">
-            <label>Lãi (đ / 1 triệu / ngày)</label>
+            <label>Lãi (/ 1 triệu / ngày)</label>
             <MoneyInput
               value={interestVal}
               onChange={setInterestVal}
-              unit="đ"
-            />
+                          />
             <div className="hint">
               Ví dụ <b>1.000</b> = 1k/1tr/ngày. Gốc{' '}
-              {fmtVnd(remNum || pNum)}đ →{' '}
-              <b>{fmtVnd(Math.round(previewDay))}đ/ngày</b>
+              {fmtVnd(remNum || pNum)} →{' '}
+              <b>{fmtVnd(Math.round(previewDay))}/ngày</b>
               {' · '}
-              <b>{fmtVnd(Math.round(previewMonth))}đ/tháng</b> (ước 30 ngày)
+              <b>{fmtVnd(Math.round(previewMonth))}/tháng</b> (ước 30 ngày)
             </div>
           </div>
         )}
@@ -394,11 +427,11 @@ export function LoanForm({ mode }: { mode: 'create' | 'edit' }) {
             <MoneyInput
               value={interestVal}
               onChange={setInterestVal}
-              unit="đ/th"
+              unit="/th"
             />
             <div className="hint">
-              Ví dụ <b>1.300.000</b>đ/tháng — không phụ thuộc gốc. ≈{' '}
-              <b>{fmtVnd(Math.round(previewDay))}đ/ngày</b>
+              Ví dụ <b>1.300.000</b>/tháng, không phụ thuộc gốc. ≈{' '}
+              <b>{fmtVnd(Math.round(previewDay))}/ngày</b>
             </div>
           </div>
         )}
@@ -411,7 +444,7 @@ export function LoanForm({ mode }: { mode: 'create' | 'edit' }) {
             type="date"
             value={lendDate}
             onChange={(e) => setLendDate(e.target.value)}
-            style={{ fontSize: 16, fontWeight: 600 }}
+            className="field-control-sm"
           />
         </div>
         <div className="field">
@@ -420,7 +453,7 @@ export function LoanForm({ mode }: { mode: 'create' | 'edit' }) {
             type="date"
             value={dueDate}
             onChange={(e) => setDueDate(e.target.value)}
-            style={{ fontSize: 16, fontWeight: 600 }}
+            className="field-control-sm"
           />
         </div>
         {mode === 'create' && (
@@ -431,7 +464,8 @@ export function LoanForm({ mode }: { mode: 'create' | 'edit' }) {
               onChange={(e) => setLinkedCash(e.target.checked)}
             />
             <span>
-              Trừ từ <b>tiền mặt VND</b> trong sổ
+              Trừ từ <b>tiền mặt VND</b> trong sổ. Bật rồi thì <b>không</b> rút
+              tay thêm ở Nạp/Rút.
             </span>
           </label>
         )}
@@ -440,7 +474,7 @@ export function LoanForm({ mode }: { mode: 'create' | 'edit' }) {
           <input
             value={note}
             onChange={(e) => setNote(e.target.value)}
-            style={{ fontSize: 16, fontWeight: 600 }}
+            className="field-control-sm"
           />
         </div>
       </div>
@@ -458,18 +492,17 @@ export function LoanForm({ mode }: { mode: 'create' | 'edit' }) {
         </div>
         <div className="r">
           <span>Ước / ngày</span>
-          <span>{fmtVnd(Math.round(previewDay))} đ</span>
+          <span>{fmtVnd(Math.round(previewDay))}</span>
         </div>
         <div className="total">
           <span className="k">Ước / tháng</span>
-          <span className="v num">{fmtVnd(Math.round(previewMonth))}đ</span>
+          <span className="v num">{fmtVnd(Math.round(previewMonth))}</span>
         </div>
       </div>
 
       {err && <div className="error">{err}</div>}
-      <button
-        className="btn-primary"
-        onClick={() => {
+      <button type="button" className="btn-primary"
+              onClick={() => {
           const { interestType: it, interestValue: iv, rateAnnual } =
             buildInterestFields()
           if (mode === 'edit' && existing) {
@@ -523,7 +556,6 @@ export function LoanForm({ mode }: { mode: 'create' | 'edit' }) {
   )
 }
 
-
 export function LoanDetail({ privacy }: { privacy: boolean }) {
   const id = useStore((s) => s.detailAssetId)
   const loans = useStore((s) => s.loans)
@@ -546,7 +578,8 @@ export function LoanDetail({ privacy }: { privacy: boolean }) {
     return (
       <div className="scroll plain">
         <button className="back" onClick={() => goBack()}>
-          ‹ Cho vay
+          <AppIcon name="arrow-left" size={18} />
+          Cho vay
         </button>
         <div className="empty">
           <h3>Không tìm thấy</h3>
@@ -570,11 +603,38 @@ export function LoanDetail({ privacy }: { privacy: boolean }) {
   const interestStartIsLend =
     interestInfo.fromDate.slice(0, 10) === l.lendDate.slice(0, 10)
 
+  const perDay = Math.round(
+    calcLoanInterestPerDay({
+      remaining: l.remaining,
+      rateAnnual: l.rateAnnual,
+      interestType: l.interestType,
+      interestValue: l.interestValue,
+    }),
+  )
+  const accruedRound = Math.round(accrued)
+  const rateLabel = loanInterestLabel({
+    rateAnnual: l.rateAnnual,
+    interestType: l.interestType,
+    interestValue: l.interestValue,
+  })
+  const statusLabel =
+    l.status === 'written_off'
+      ? 'Đã xóa nợ'
+      : l.status === 'paid'
+        ? 'Đã thu đủ gốc'
+        : l.status === 'partial'
+          ? 'Thu một phần'
+          : 'Đang vay'
+  const periodHint = interestStartIsLend
+    ? `Từ ngày vay ${fromLabel} · ${interestInfo.days} ngày`
+    : `Sau đóng lãi ${fromLabel} · ${interestInfo.days} ngày`
+
   return (
-    <div className="scroll plain has-bottom-actions">
+    <div className="scroll plain has-bottom-actions loan-detail-page">
       <div className="nav">
-        <button className="back" onClick={() => goBack()}>
-          ‹ Cho vay
+        <button type="button" className="back" onClick={() => goBack()}>
+          <AppIcon name="arrow-left" size={18} />
+          Cho vay
         </button>
         <div className="mid">{l.borrower}</div>
         <button
@@ -586,146 +646,151 @@ export function LoanDetail({ privacy }: { privacy: boolean }) {
         </button>
       </div>
 
-      <div className="loan-detail-hero">
-        <div className="pill loan-status-pill">
-          {l.status === 'written_off'
-            ? 'Đã xóa nợ'
-            : l.status === 'paid'
-              ? 'Đã thu đủ gốc'
-              : l.status === 'partial'
-                ? 'Thu một phần'
-                : 'Đang vay'}
-        </div>
-        <div className="k">Còn phải thu (gốc)</div>
-        <div className="big num">
-          {mask(privacy, fmtVnd(l.remaining))}
-          <small>đ</small>
-        </div>
-        <div className="loan-detail-row">
-          <div>
-            <div className="k">Gốc</div>
-            <div className="v num">{mask(privacy, fmtVnd(l.principal, true))}</div>
-          </div>
-          <div>
-            <div className="k">Đã thu gốc</div>
-            <div className="v num">{mask(privacy, fmtVnd(paid, true))}</div>
-          </div>
-          <div>
-            <div className="k">Đã thu lãi</div>
-            <div className="v num">
-              {mask(privacy, fmtVnd(interestPaid, true))}
-            </div>
-          </div>
-        </div>
-
-        <div className="loan-accrued-box">
-          <div>
-            <div className="k">Lãi tạm tính đến hôm nay</div>
-            <div className="accrued num">
-              {mask(privacy, fmtVnd(Math.round(accrued)))} đ
-            </div>
-          </div>
-          <div className="accrued-hint">
-            {loanInterestLabel({
-              rateAnnual: l.rateAnnual,
-              interestType: l.interestType,
-              interestValue: l.interestValue,
-            })}
-            {' · '}
-            ≈{' '}
-            {fmtVnd(
-              Math.round(
-                calcLoanInterestPerDay({
-                  remaining: l.remaining,
-                  rateAnnual: l.rateAnnual,
-                  interestType: l.interestType,
-                  interestValue: l.interestValue,
-                }),
-              ),
-            )}
-            đ/ngày
-            <br />
-            {interestStartIsLend
-              ? `Tính từ ngày vay ${fromLabel} → hôm nay (${interestInfo.days} ngày)`
-              : `Sau lần đóng lãi ${fromLabel} → hôm nay (${interestInfo.days} ngày) · đã thu ${fmtVnd(interestPaid, true)}`}
-          </div>
-        </div>
-
-        {l.principal > 0 && (
-          <div className="loan-progress loan-progress-dark">
-            <div
-              className="loan-progress-bar"
-              style={{ width: `${Math.min(100, paidPct)}%` }}
-            />
-          </div>
-        )}
-        <div className="loan-progress-label">Đã thu {paidPct}% gốc</div>
-        {due != null && (
-          <div
-            className={`loan-due-banner ${due < 0 ? 'over' : due <= 7 ? 'warn' : ''}`}
-          >
-            {due < 0
-              ? `Trễ hạn ${-due} ngày`
-              : due === 0
-                ? 'Hẹn trả hôm nay'
-                : `Còn ${due} ngày đến hạn`}
-          </div>
-        )}
-      </div>
-
-      <div className="card">
-        <div className="field">
-          <label>Ngày cho vay</label>
-          <div style={{ fontWeight: 650 }}>
-            {new Date(l.lendDate).toLocaleDateString('vi-VN')}
-          </div>
-        </div>
-        {l.dueDate && (
-          <div className="field">
-            <label>Hẹn trả</label>
-            <div style={{ fontWeight: 650 }}>
-              {new Date(l.dueDate).toLocaleDateString('vi-VN')}
-            </div>
-          </div>
-        )}
-        {l.phone && (
-          <div className="field">
-            <label>SĐT</label>
-            <a
-              href={`tel:${l.phone}`}
-              style={{ color: 'var(--brand)', fontWeight: 650 }}
+      <section className="wb-hero loan-detail-hero" aria-label="Còn phải thu">
+        <div className="loan-detail-status-row">
+          <span className="loan-status-chip">{statusLabel}</span>
+          {due != null ? (
+            <span
+              className={`loan-due ${due < 0 ? 'over' : due <= 7 ? 'warn' : ''}`}
             >
+              {due < 0
+                ? `Trễ ${-due} ngày`
+                : due === 0
+                  ? 'Hẹn hôm nay'
+                  : `Còn ${due} ngày`}
+            </span>
+          ) : null}
+        </div>
+        <p className="wb-hero__label">Còn phải thu (gốc)</p>
+        <p className="wb-hero__amount num">
+          {mask(privacy, fmtVnd(l.remaining))}
+
+        </p>
+        <div className="wb-hero__stats">
+          <div className="wb-hero__stat">
+            <span className="wb-hero__stat-k">Gốc</span>
+            <span className="wb-hero__stat-v num">
+              {mask(privacy, fmtVnd(l.principal, true))}
+            </span>
+          </div>
+          <div className="wb-hero__stat">
+            <span className="wb-hero__stat-k">Đã thu gốc</span>
+            <span className="wb-hero__stat-v num">
+              {mask(privacy, fmtVnd(paid, true))}
+            </span>
+          </div>
+          <div className="wb-hero__stat">
+            <span className="wb-hero__stat-k">Đã thu lãi</span>
+            <span className="wb-hero__stat-v num">
+              {mask(privacy, fmtVnd(interestPaid, true))}
+            </span>
+          </div>
+        </div>
+        {l.principal > 0 ? (
+          <div className="loan-detail-progress">
+            <div className="loan-progress loan-progress-dark">
+              <div
+                className="loan-progress-bar"
+                style={{ width: `${Math.min(100, paidPct)}%` }}
+              />
+            </div>
+            <div className="loan-progress-label">Đã thu {paidPct}% gốc</div>
+          </div>
+        ) : null}
+      </section>
+
+      {/* Lãi · khối tập trung cho thu lãi */}
+      <section
+        className={`loan-interest-card${accruedRound > 0 ? ' has-accrued' : ''}`}
+        aria-label="Lãi tạm tính"
+      >
+        <div className="loan-interest-card__head">
+          <div>
+            <div className="loan-interest-card__label">Lãi tạm tính</div>
+            <div className="loan-interest-card__amount num">
+              {mask(privacy, fmtVnd(accruedRound))}
+
+            </div>
+          </div>
+          {active && accruedRound > 0 ? (
+            <button
+              type="button"
+              className="btn-primary btn-compact loan-interest-card__cta"
+              onClick={() => {
+                setPanel('interest')
+                setPay(String(accruedRound))
+                setErr('')
+              }}
+            >
+              Đóng lãi
+            </button>
+          ) : null}
+        </div>
+        <div className="loan-interest-card__meta">
+          <span>{rateLabel}</span>
+          <span>≈ {fmtVnd(perDay)}/ngày</span>
+          <span>{periodHint}</span>
+        </div>
+      </section>
+
+      <section className="card loan-meta-card">
+        <div className="loan-meta-row">
+          <span className="loan-meta-k">Ngày cho vay</span>
+          <span className="loan-meta-v">
+            {new Date(l.lendDate).toLocaleDateString('vi-VN')}
+          </span>
+        </div>
+        {l.dueDate ? (
+          <div className="loan-meta-row">
+            <span className="loan-meta-k">Hẹn trả</span>
+            <span className="loan-meta-v">
+              {new Date(l.dueDate).toLocaleDateString('vi-VN')}
+            </span>
+          </div>
+        ) : null}
+        {l.phone ? (
+          <div className="loan-meta-row">
+            <span className="loan-meta-k">SĐT</span>
+            <a href={`tel:${l.phone}`} className="inline-link loan-meta-v">
               {l.phone}
             </a>
           </div>
-        )}
-        {l.note && (
-          <div className="field">
-            <label>Ghi chú</label>
-            <div>{l.note}</div>
+        ) : null}
+        {l.note ? (
+          <div className="loan-meta-row loan-meta-row--note">
+            <span className="loan-meta-k">Ghi chú</span>
+            <span className="loan-meta-v loan-meta-v--wrap">{l.note}</span>
           </div>
-        )}
-      </div>
+        ) : null}
+      </section>
 
-      {panel === 'principal' && active && (
-        <div className="card action-panel">
+      {panel === 'principal' && active ? (
+        <section className="card loan-action-panel" aria-label="Thu gốc">
+          <h3 className="loan-action-panel__title">Thu gốc</h3>
+          <p className="loan-action-panel__hint">
+            Giảm số còn thu. Còn lại:{' '}
+            <strong className="num">{fmtVnd(l.remaining)}</strong>
+          </p>
           <div className="field">
-            <label>Thu gốc (giảm còn thu)</label>
+            <label>Số tiền thu gốc</label>
             <MoneyInput
               value={pay}
               onChange={setPay}
               placeholder={formatMoneyInput(l.remaining)}
+              ariaLabel="Số tiền thu gốc"
             />
           </div>
-          <label className="check-row">
+          <label className="check-row loan-action-check">
             <input
               type="checkbox"
               checked={linkCash}
               onChange={(e) => setLinkCash(e.target.checked)}
             />
-            <span>Cộng vào tiền mặt VND</span>
+            <span>
+              Cộng vào tiền mặt VND · không nạp tay thêm nếu đã bật
+            </span>
           </label>
-          <div style={{ padding: '0 14px 14px', display: 'grid', gap: 8 }}>
+          <div className="loan-action-panel__actions">
             <button
               className="btn-primary"
               type="button"
@@ -749,9 +814,8 @@ export function LoanDetail({ privacy }: { privacy: boolean }) {
               Xác nhận thu gốc
             </button>
             <button
-              className="btn-secondary"
               type="button"
-              style={{ margin: 0 }}
+              className="btn-secondary"
               onClick={() => {
                 const res = receiveLoanPayment({
                   id: l.id,
@@ -771,37 +835,78 @@ export function LoanDetail({ privacy }: { privacy: boolean }) {
             >
               Thu hết gốc còn lại
             </button>
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={() => setPanel('none')}
+            >
+              Hủy
+            </button>
           </div>
-        </div>
-      )}
+        </section>
+      ) : null}
 
-      {panel === 'interest' && (
-        <div className="card action-panel">
+      {panel === 'interest' ? (
+        <section className="card loan-action-panel" aria-label="Đóng lãi">
+          <h3 className="loan-action-panel__title">Đóng lãi</h3>
+          <p className="loan-action-panel__hint">
+            Không giảm gốc. Lãi tạm tính:{' '}
+            <strong className="num">{fmtVnd(accruedRound)}</strong>
+          </p>
           <div className="field">
-            <label>Đóng lãi (không giảm gốc)</label>
+            <label>Số tiền đóng lãi</label>
             <MoneyInput
               value={pay}
               onChange={setPay}
-              placeholder={formatMoneyInput(Math.round(accrued))}
+              placeholder={formatMoneyInput(accruedRound)}
+              ariaLabel="Số tiền đóng lãi"
             />
-            <div className="hint">
-              Gợi ý lãi tạm tính: <b>{fmtVnd(Math.round(accrued))} đ</b>
-            </div>
           </div>
-          <label className="check-row">
+          <div className="loan-interest-presets" role="group" aria-label="Gợi ý">
+            <button
+              type="button"
+              className={
+                moneyNum(pay) === accruedRound ? 'on' : ''
+              }
+              onClick={() => setPay(String(accruedRound))}
+            >
+              Đủ lãi tạm
+            </button>
+            {perDay > 0 ? (
+              <button
+                type="button"
+                className={moneyNum(pay) === perDay ? 'on' : ''}
+                onClick={() => setPay(String(perDay))}
+              >
+                1 ngày
+              </button>
+            ) : null}
+            {perDay > 0 ? (
+              <button
+                type="button"
+                className={moneyNum(pay) === perDay * 7 ? 'on' : ''}
+                onClick={() => setPay(String(perDay * 7))}
+              >
+                7 ngày
+              </button>
+            ) : null}
+          </div>
+          <label className="check-row loan-action-check">
             <input
               type="checkbox"
               checked={linkCash}
               onChange={(e) => setLinkCash(e.target.checked)}
             />
-            <span>Cộng vào tiền mặt VND</span>
+            <span>
+              Cộng vào tiền mặt VND · không nạp tay thêm nếu đã bật
+            </span>
           </label>
-          <div style={{ padding: '0 14px 14px', display: 'grid', gap: 8 }}>
+          <div className="loan-action-panel__actions">
             <button
               className="btn-primary"
               type="button"
               onClick={() => {
-                const amt = moneyNum(pay) || Math.round(accrued)
+                const amt = moneyNum(pay) || accruedRound
                 const res = payLoanInterest({
                   id: l.id,
                   amount: amt,
@@ -821,34 +926,28 @@ export function LoanDetail({ privacy }: { privacy: boolean }) {
               Xác nhận đóng lãi
             </button>
             <button
-              className="btn-secondary"
               type="button"
-              style={{ margin: 0 }}
-              onClick={() => {
-                setPay(String(Math.round(accrued)))
-              }}
+              className="btn-secondary"
+              onClick={() => setPanel('none')}
             >
-              Điền lãi tạm tính
+              Hủy
             </button>
           </div>
-        </div>
-      )}
+        </section>
+      ) : null}
 
-      {panel === 'more' && (
-        <div className="card action-panel">
-          <div className="field">
-            <div className="hint" style={{ margin: 0, color: 'var(--ink-2)' }}>
-              <b>Xóa nợ</b> = không thu được, giữ lịch sử, gốc còn = 0.
-              <br />
-              <b>Cho vào thùng rác</b> = ẩn khỏi list, có thể khôi phục.
-            </div>
-          </div>
-          <div style={{ padding: '0 14px 14px', display: 'grid', gap: 8 }}>
-            {active && (
+      {panel === 'more' ? (
+        <section className="card loan-action-panel" aria-label="Thêm thao tác">
+          <h3 className="loan-action-panel__title">Thêm</h3>
+          <p className="loan-action-panel__hint">
+            Xóa nợ: không thu được, còn thu = 0, giữ lịch sử. Thùng rác: ẩn
+            khỏi list, có thể khôi phục.
+          </p>
+          <div className="loan-action-panel__actions">
+            {active ? (
               <button
-                className="btn-secondary"
                 type="button"
-                style={{ margin: 0 }}
+                className="btn-secondary"
                 onClick={() => {
                   if (
                     confirm(
@@ -863,11 +962,10 @@ export function LoanDetail({ privacy }: { privacy: boolean }) {
               >
                 Xóa nợ (không thu được)
               </button>
-            )}
+            ) : null}
             <button
-              className="btn-secondary"
+              className="btn-secondary btn-danger"
               type="button"
-              style={{ margin: 0, color: 'var(--down)' }}
               onClick={() => {
                 if (confirm('Cho vào thùng rác? Có thể khôi phục sau.')) {
                   softDeleteLoan(l.id)
@@ -879,29 +977,46 @@ export function LoanDetail({ privacy }: { privacy: boolean }) {
               Cho vào thùng rác
             </button>
             <button
-              className="btn-secondary"
               type="button"
-              style={{ margin: 0 }}
+              className="btn-secondary"
               onClick={() => setPanel('none')}
             >
               Đóng
             </button>
           </div>
-        </div>
-      )}
+        </section>
+      ) : null}
 
-      {l.payments.length > 0 && (
-        <>
-          <div className="sec">
-            <h2>Lịch sử thu</h2>
+      <div className="sec">
+        <h2>Lịch sử</h2>
+      </div>
+      <div className="group loan-history">
+        {(l.payments || []).length === 0 ? (
+          <div className="row row-muted cursor-default">
+            Chưa có lần thu gốc, đóng lãi hay sửa. Mọi thao tác sẽ hiện ở đây.
           </div>
-          <div className="group">
-            {[...l.payments].reverse().map((p) => (
-              <div key={p.id} className="row" style={{ cursor: 'default' }}>
+        ) : (
+          [...(l.payments || [])].reverse().map((p) => {
+            const kind =
+              p.type === 'interest'
+                ? 'Đóng lãi'
+                : p.type === 'edit'
+                  ? 'Sửa khoản'
+                  : p.type === 'write_off'
+                    ? 'Xóa nợ'
+                    : 'Thu gốc'
+            const showAmt =
+              p.type !== 'edit' && p.amount > 0
+                ? ` · ${fmtVnd(p.amount)}`
+                : p.type === 'edit' && p.amount > 0
+                  ? ` · Δ ${fmtVnd(p.amount)}`
+                  : ''
+            return (
+              <div className="row cursor-default" key={p.id}>
                 <div className="body">
                   <div className="t">
-                    {p.type === 'interest' ? 'Đóng lãi' : 'Thu gốc'}{' '}
-                    {fmtVnd(p.amount)}đ
+                    {kind}
+                    {showAmt}
                   </div>
                   <div className="d">
                     {new Date(p.paidAt).toLocaleString('vi-VN')}
@@ -909,58 +1024,90 @@ export function LoanDetail({ privacy }: { privacy: boolean }) {
                   </div>
                 </div>
               </div>
-            ))}
-          </div>
-        </>
-      )}
+            )
+          })
+        )}
+      </div>
 
-      {err && <div className="error">{err}</div>}
+      {err ? (
+        <div className="error" role="alert">
+          {err}
+        </div>
+      ) : null}
 
-      {/* Menu thao tác nhanh dưới đáy — fixed, kéo lên là hiện */}
-      <div className="bottom-actions">
+      <nav className="bottom-actions loan-dock" aria-label="Thao tác khoản vay">
         {active ? (
           <>
             <button
               type="button"
-              className={panel === 'principal' ? 'on' : ''}
+              className={`loan-dock__btn${panel === 'principal' ? ' is-on' : ''}`}
+              aria-pressed={panel === 'principal'}
               onClick={() => {
                 setPanel(panel === 'principal' ? 'none' : 'principal')
                 setPay('')
+                setErr('')
               }}
             >
-              Thu gốc
+              <span className="loan-dock__ico" aria-hidden>
+                <AppIcon name="cash" size={22} />
+              </span>
+              <span className="loan-dock__lab">Thu gốc</span>
             </button>
             <button
               type="button"
-              className={panel === 'interest' ? 'on' : ''}
+              className={`loan-dock__btn loan-dock__btn--interest${panel === 'interest' ? ' is-on' : ''}${accruedRound > 0 ? ' has-badge' : ''}`}
+              aria-pressed={panel === 'interest'}
               onClick={() => {
                 setPanel(panel === 'interest' ? 'none' : 'interest')
-                setPay(String(Math.round(accrued) || ''))
+                setPay(String(accruedRound || ''))
+                setErr('')
               }}
             >
-              Đóng lãi
+              <span className="loan-dock__ico" aria-hidden>
+                <AppIcon name="interest" size={22} />
+              </span>
+              <span className="loan-dock__lab">Đóng lãi</span>
+              {accruedRound > 0 ? (
+                <span className="loan-dock__badge" aria-hidden />
+              ) : null}
             </button>
             <button
               type="button"
+              className="loan-dock__btn"
               onClick={() => setScreen('loan-edit', l.id)}
             >
-              Sửa
+              <span className="loan-dock__ico" aria-hidden>
+                <AppIcon name="edit" size={22} />
+              </span>
+              <span className="loan-dock__lab">Sửa</span>
             </button>
             <button
               type="button"
-              className={panel === 'more' ? 'on' : ''}
+              className={`loan-dock__btn${panel === 'more' ? ' is-on' : ''}`}
+              aria-pressed={panel === 'more'}
               onClick={() => setPanel(panel === 'more' ? 'none' : 'more')}
             >
-              Thêm
+              <span className="loan-dock__ico" aria-hidden>
+                <AppIcon name="more" size={22} />
+              </span>
+              <span className="loan-dock__lab">Thêm</span>
             </button>
           </>
         ) : (
           <>
-            <button type="button" onClick={() => goBack()}>
-              Quay lại
+            <button
+              type="button"
+              className="loan-dock__btn"
+              onClick={() => goBack()}
+            >
+              <span className="loan-dock__ico" aria-hidden>
+                <AppIcon name="arrow-left" size={22} />
+              </span>
+              <span className="loan-dock__lab">Quay lại</span>
             </button>
             <button
               type="button"
+              className="loan-dock__btn loan-dock__btn--danger"
               onClick={() => {
                 if (confirm('Cho vào thùng rác?')) {
                   softDeleteLoan(l.id)
@@ -969,15 +1116,17 @@ export function LoanDetail({ privacy }: { privacy: boolean }) {
                 }
               }}
             >
-              Thùng rác
+              <span className="loan-dock__ico" aria-hidden>
+                <AppIcon name="warning" size={22} />
+              </span>
+              <span className="loan-dock__lab">Thùng rác</span>
             </button>
           </>
         )}
-      </div>
+      </nav>
     </div>
   )
 }
-
 
 export function LoansTrash({ privacy }: { privacy: boolean }) {
   const loans = useStore((s) => s.loans)
@@ -994,18 +1143,14 @@ export function LoansTrash({ privacy }: { privacy: boolean }) {
     <div className="scroll plain">
       <div className="nav">
         <button className="back" onClick={() => goBack()}>
-          ‹ Cho vay
+          <AppIcon name="arrow-left" size={18} />
+          Cho vay
         </button>
         <div className="mid">Thùng rác</div>
-        <div style={{ minWidth: 64 }} />
+        <div className="nav-spacer" />
       </div>
       <p
-        style={{
-          fontSize: 13,
-          color: 'var(--muted)',
-          marginBottom: 12,
-          lineHeight: 1.45,
-        }}
+        className="sheet-meta"
       >
         Khoản xóa nhầm có thể <b>Khôi phục</b>. Xóa vĩnh viễn thì mất hẳn.
       </p>
@@ -1036,11 +1181,10 @@ export function LoansTrash({ privacy }: { privacy: boolean }) {
                   <div className="unit">còn thu</div>
                 </div>
               </div>
-              <div className="btn-row" style={{ marginTop: 12, marginBottom: 0 }}>
+              <div className="btn-row mt-sm mb-0">
                 <button
-                  className="btn-primary"
+                  className="btn-primary btn-compact"
                   type="button"
-                  style={{ margin: 0, padding: 12, fontSize: 14 }}
                   onClick={() => {
                     restoreLoan(l.id)
                     showToast('Đã khôi phục')
@@ -1049,9 +1193,8 @@ export function LoansTrash({ privacy }: { privacy: boolean }) {
                   Khôi phục
                 </button>
                 <button
-                  className="btn-secondary"
+                  className="btn-secondary btn-compact btn-danger"
                   type="button"
-                  style={{ margin: 0, padding: 12, fontSize: 14, color: 'var(--down)' }}
                   onClick={() => {
                     if (confirm('Xóa vĩnh viễn? Không hoàn tác được.')) {
                       hardDeleteLoan(l.id)

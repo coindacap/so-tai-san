@@ -3,16 +3,27 @@ import { useStore } from '../store/useStore'
 import {
   daysUntil,
   estimateInterest,
+  estimateMaturityInterest,
   fmtNum,
   fmtVnd,
   nowIso,
   toDateInput,
   formatMoneyInput,
   moneyNum,
+  parseRatePercent,
 } from '../lib/format'
-import type { SavingsAccount } from '../types'
+import type { SavingsAccount, SavingsEvent } from '../types'
 import { MoneyInput } from '../components/MoneyInput'
+import { AppIcon } from '../components/AppIcon'
 import { mask } from '../lib/ui'
+
+function savingsEventLabel(e: SavingsEvent): string {
+  if (e.type === 'open') return 'Mở sổ'
+  if (e.type === 'topup') return 'Gửi thêm'
+  if (e.type === 'edit') return 'Sửa khoản'
+  if (e.type === 'close') return 'Tất toán'
+  return 'Sự kiện'
+}
 
 export function SavingsList({ privacy }: { privacy: boolean }) {
   const savings = useStore((s) => s.savings)
@@ -28,9 +39,29 @@ export function SavingsList({ privacy }: { privacy: boolean }) {
       if (db == null) return -1
       return da - db
     })
+  const closed = savings
+    .filter((s) => s.status === 'closed')
+    .slice()
+    .sort(
+      (a, b) =>
+        new Date(b.closedAt || b.updatedAt).getTime() -
+        new Date(a.closedAt || a.updatedAt).getTime(),
+    )
   const total = active.reduce((a, s) => a + s.principal, 0)
-  const totalInterest = active.reduce(
+  const totalAccrued = active.reduce(
     (a, s) => a + estimateInterest(s.principal, s.rateAnnual, s.startDate),
+    0,
+  )
+  const totalMaturity = active.reduce(
+    (a, s) =>
+      a +
+      estimateMaturityInterest(
+        s.principal,
+        s.rateAnnual,
+        s.startDate,
+        s.maturityDate,
+        s.termMonths,
+      ),
     0,
   )
   const soon = active.filter((s) => {
@@ -39,42 +70,50 @@ export function SavingsList({ privacy }: { privacy: boolean }) {
   }).length
 
   return (
-    <div className="scroll">
-      <div className="large-title" style={{ paddingTop: 8 }}>
+    <div className="scroll wb-page savings-page">
+      <div className="large-title">
         <h1>Tiết kiệm</h1>
         <div className="sub">Sổ gửi ngân hàng đang mở</div>
       </div>
 
-      <div className="sav-hero">
-        <div className="sav-hero-label">Tổng gốc đang gửi</div>
-        <div className="sav-hero-total num">
+      <section className="wb-hero" aria-label="Tổng gốc đang gửi">
+        <p className="wb-hero__label">Tổng gốc đang gửi</p>
+        <p className="wb-hero__amount num">
           {mask(privacy, fmtVnd(total))}
-          <small>đ</small>
+        </p>
+        <div className="wb-hero__stats">
+          <div className="wb-hero__stat">
+            <span className="wb-hero__stat-k">Số khoản</span>
+            <span className="wb-hero__stat-v num">{active.length}</span>
+          </div>
+          <div className="wb-hero__stat">
+            <span className="wb-hero__stat-k">Lãi tạm tính</span>
+            <span className="wb-hero__stat-v num up">
+              +{mask(privacy, fmtVnd(Math.round(totalAccrued)))}
+            </span>
+          </div>
+          <div className="wb-hero__stat">
+            <span className="wb-hero__stat-k">Lãi cuối kỳ</span>
+            <span className="wb-hero__stat-v num up">
+              +{mask(privacy, fmtVnd(Math.round(totalMaturity)))}
+            </span>
+          </div>
+          <div className="wb-hero__stat">
+            <span className="wb-hero__stat-k">Sắp đáo hạn</span>
+            <span className="wb-hero__stat-v num">
+              {soon > 0 ? `${soon} khoản` : 'Chưa có'}
+            </span>
+          </div>
         </div>
-        <div className="sav-hero-grid">
-          <div>
-            <div className="k">Số khoản</div>
-            <div className="v num">{active.length}</div>
-          </div>
-          <div>
-            <div className="k">Lãi ước tính</div>
-            <div className="v num up">
-              +{mask(privacy, fmtVnd(totalInterest, true))}
-            </div>
-          </div>
-          <div>
-            <div className="k">Sắp đáo hạn</div>
-            <div className="v num">{soon > 0 ? `${soon} khoản` : '—'}</div>
-          </div>
-        </div>
-      </div>
+      </section>
 
       <button
+        type="button"
         className="btn-primary"
-        style={{ marginBottom: 14 }}
         onClick={() => setScreen('savings-form')}
       >
-        + Gửi tiết kiệm mới
+        <AppIcon name="plus" size={18} />
+        Gửi tiết kiệm mới
       </button>
 
       {active.length === 0 ? (
@@ -89,10 +128,68 @@ export function SavingsList({ privacy }: { privacy: boolean }) {
           ))}
         </div>
       )}
+
+      {closed.length > 0 ? (
+        <>
+          <div className="sec">
+            <h2>Đã tất toán</h2>
+            <span className="sec-hint">{closed.length} khoản</span>
+          </div>
+          <div className="sav-list">
+            {closed.map((s) => (
+              <ClosedSavingsRow key={s.id} s={s} privacy={privacy} />
+            ))}
+          </div>
+        </>
+      ) : null}
     </div>
   )
 }
 
+function ClosedSavingsRow({
+  s,
+  privacy,
+}: {
+  s: SavingsAccount
+  privacy: boolean
+}) {
+  const setScreen = useStore((st) => st.setScreen)
+  const closedAt = s.closedAt || s.updatedAt
+  const got = s.closedAmountBack ?? 0
+  const principal = s.closedPrincipal ?? 0
+  return (
+    <button
+      type="button"
+      className="sav-card sav-card-closed"
+      onClick={() => setScreen('savings-detail', s.id)}
+    >
+      <div className="sav-card-top">
+        <div className="sav-bank-badge">{s.bank.slice(0, 2).toUpperCase()}</div>
+        <div className="sav-card-mid">
+          <div className="sav-card-name">{s.name}</div>
+          <div className="sav-card-meta">
+            {s.bank}
+            {' · '}
+            Tất toán {new Date(closedAt).toLocaleDateString('vi-VN')}
+          </div>
+        </div>
+        <div className="sav-card-amt">
+          <div className="num">{mask(privacy, fmtVnd(got))}</div>
+          <div className="unit">nhận về</div>
+        </div>
+      </div>
+      <div className="sav-card-bottom">
+        <div className="sav-interest">
+          Gốc {mask(privacy, fmtVnd(principal))}
+          {got > principal
+            ? ` · lãi ~${mask(privacy, fmtVnd(got - principal))}`
+            : ''}
+        </div>
+        <div className="sav-due">Xem lịch sử</div>
+      </div>
+    </button>
+  )
+}
 
 export function SavingsRow({
   s,
@@ -102,7 +199,18 @@ export function SavingsRow({
   privacy: boolean
 }) {
   const setScreen = useStore((s) => s.setScreen)
-  const interest = estimateInterest(s.principal, s.rateAnnual, s.startDate)
+  const accrued = Math.round(
+    estimateInterest(s.principal, s.rateAnnual, s.startDate),
+  )
+  const maturityInterest = Math.round(
+    estimateMaturityInterest(
+      s.principal,
+      s.rateAnnual,
+      s.startDate,
+      s.maturityDate,
+      s.termMonths,
+    ),
+  )
   const due = daysUntil(s.maturityDate)
   const termDays =
     s.startDate && s.maturityDate
@@ -148,24 +256,34 @@ export function SavingsRow({
         </div>
         <div className="sav-card-amt">
           <div className="num">{mask(privacy, fmtVnd(s.principal))}</div>
-          <div className="unit">đ</div>
         </div>
       </div>
 
-      <div className="sav-card-bottom">
-        <div className="sav-interest up">
-          Lãi ~{mask(privacy, fmtVnd(interest))}đ
+      <div className="sav-card-facts">
+        <div className="sav-fact">
+          <span className="sav-fact-k">Lãi tạm</span>
+          <span className="sav-fact-v num up">
+            +{mask(privacy, fmtVnd(accrued))}
+          </span>
+        </div>
+        <div className="sav-fact">
+          <span className="sav-fact-k">Cuối kỳ</span>
+          <span className="sav-fact-v num up">
+            {maturityInterest > 0
+              ? `+${mask(privacy, fmtVnd(maturityInterest))}`
+              : '—'}
+          </span>
         </div>
         <div
           className={`sav-due ${overdue ? 'over' : urgent ? 'warn' : ''}`}
         >
           {due == null
-            ? 'Không kỳ hạn'
+            ? 'KKH'
             : overdue
-              ? `Quá hạn ${-due} ngày`
+              ? `Quá ${-due}n`
               : due === 0
-                ? 'Đáo hạn hôm nay'
-                : `Còn ${due} ngày`}
+                ? 'Hôm nay'
+                : `Còn ${due}n`}
         </div>
       </div>
 
@@ -178,21 +296,55 @@ export function SavingsRow({
   )
 }
 
-
-export function SavingsForm() {
+export function SavingsForm({ mode = 'create' }: { mode?: 'create' | 'edit' }) {
   const addSavings = useStore((s) => s.addSavings)
+  const updateSavings = useStore((s) => s.updateSavings)
+  const goBack = useStore((s) => s.goBack)
   const setScreen = useStore((s) => s.setScreen)
   const showToast = useStore((s) => s.showToast)
-  const [name, setName] = useState('Sổ tiết kiệm')
-  const [bank, setBank] = useState('')
-  const [principal, setPrincipal] = useState('50000000')
-  const [rate, setRate] = useState('5.5')
-  const [start, setStart] = useState(toDateInput(nowIso()))
-  const [term, setTerm] = useState('6')
-  const [noTerm, setNoTerm] = useState(false)
-  const [linkedCash, setLinkedCash] = useState(true)
-  const [note, setNote] = useState('')
+  const detailId = useStore((s) => s.detailAssetId)
+  const existing = useStore((s) =>
+    mode === 'edit' ? s.savings.find((x) => x.id === detailId) : undefined,
+  )
+
+  const [name, setName] = useState(
+    existing?.name || 'Sổ tiết kiệm',
+  )
+  const [bank, setBank] = useState(existing?.bank || '')
+  const [principal, setPrincipal] = useState(
+    String(existing?.principal ?? 50_000_000),
+  )
+  const [rate, setRate] = useState(
+    existing?.rateAnnual != null ? String(existing.rateAnnual) : '5.5',
+  )
+  const [start, setStart] = useState(
+    toDateInput(existing?.startDate || nowIso()),
+  )
+  const [term, setTerm] = useState(
+    existing?.termMonths != null ? String(existing.termMonths) : '6',
+  )
+  const [noTerm, setNoTerm] = useState(
+    mode === 'edit'
+      ? !existing?.maturityDate && !existing?.termMonths
+      : false,
+  )
+  const [linkedCash, setLinkedCash] = useState(mode === 'create')
+  const [note, setNote] = useState(existing?.note || '')
   const [err, setErr] = useState('')
+
+  if (mode === 'edit' && !existing) {
+    return (
+      <div className="scroll plain">
+        <button type="button" className="back" onClick={() => goBack()}>
+          <AppIcon name="arrow-left" size={18} />
+          Huỷ
+        </button>
+        <div className="empty">
+          <h3>Không tìm thấy khoản</h3>
+        </div>
+      </div>
+    )
+  }
 
   const maturity = (() => {
     if (noTerm || !term) return null
@@ -201,14 +353,45 @@ export function SavingsForm() {
     return d.toISOString()
   })()
 
+  const pNum = moneyNum(principal)
+  const rateNum = parseRatePercent(rate)
+  const startIso = start
+    ? new Date(start + 'T12:00:00').toISOString()
+    : nowIso()
+  const termM = noTerm ? null : Number(term) || null
+  const accruedPreview = Math.round(
+    estimateInterest(pNum, rateNum, startIso),
+  )
+  const maturityPreview = Math.round(
+    estimateMaturityInterest(
+      pNum,
+      rateNum,
+      startIso,
+      noTerm ? null : maturity,
+      termM,
+    ),
+  )
+  const endTotal = pNum + maturityPreview
+
   return (
     <div className="scroll plain">
       <div className="nav">
-        <button className="back" onClick={() => setScreen('savings')}>
-          ‹ Huỷ
+        <button
+          type="button"
+          className="back"
+          onClick={() =>
+            mode === 'edit' && existing
+              ? setScreen('savings-detail', existing.id, { replace: true })
+              : goBack()
+          }
+        >
+          <AppIcon name="arrow-left" size={18} />
+          Huỷ
         </button>
-        <div className="mid">Gửi tiết kiệm</div>
-        <div style={{ minWidth: 64 }} />
+        <div className="mid">
+          {mode === 'edit' ? 'Sửa tiết kiệm' : 'Gửi tiết kiệm'}
+        </div>
+        <div className="nav-spacer" />
       </div>
 
       <div className="card">
@@ -217,7 +400,7 @@ export function SavingsForm() {
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
-            style={{ fontSize: 17, fontWeight: 600 }}
+            className="field-control"
           />
         </div>
         <div className="field">
@@ -226,25 +409,38 @@ export function SavingsForm() {
             value={bank}
             onChange={(e) => setBank(e.target.value)}
             placeholder="VCB, ACB, MB…"
-            style={{ fontSize: 17, fontWeight: 600 }}
+            className="field-control"
           />
         </div>
         <div className="field">
-          <label>Số tiền gửi</label>
+          <label>{mode === 'edit' ? 'Gốc hiện tại' : 'Số tiền gửi'}</label>
           <MoneyInput value={principal} onChange={setPrincipal} />
+          {mode === 'edit' ? (
+            <div className="hint">
+              Sửa gốc chỉ cập nhật sổ — không tự trừ/cộng tiền mặt. Gửi thêm
+              bằng tất toán / ghi tay nếu cần khớp cash.
+            </div>
+          ) : null}
         </div>
         <div className="field">
-          <label>Lãi suất %/năm</label>
-          <div className="inline">
-            <input
-              className="num"
-              type="text"
-              inputMode="decimal"
-              value={rate}
-              onChange={(e) => setRate(e.target.value.replace(/[^\d.]/g, ''))}
-            />
-            <span className="unit">%</span>
-          </div>
+          <label htmlFor="sav-rate">Lãi suất %/năm</label>
+          <MoneyInput
+            inputId="sav-rate"
+            value={rate}
+            onChange={setRate}
+            unit="%"
+            decimal
+            maxFraction={3}
+            ariaLabel="Lãi suất phần trăm trên năm"
+            placeholder="9,5"
+            helperText="Gõ 9,5 hoặc 9.5 — bàn phím iPhone dùng dấu phẩy"
+          />
+          {rateNum > 25 ? (
+            <div className="hint warn-hint">
+              Lãi {fmtNum(rateNum, 2)}%/năm khá cao — kiểm tra lại (vd muốn 9,5
+              chứ không phải 95).
+            </div>
+          ) : null}
         </div>
         <div className="field">
           <label>Ngày gửi</label>
@@ -252,7 +448,7 @@ export function SavingsForm() {
             type="date"
             value={start}
             onChange={(e) => setStart(e.target.value)}
-            style={{ fontSize: 16, fontWeight: 600 }}
+            className="field-control-sm"
           />
         </div>
         <div className="field">
@@ -283,22 +479,25 @@ export function SavingsForm() {
           />
           <span>Không kỳ hạn</span>
         </label>
-        <label className="check-row">
-          <input
-            type="checkbox"
-            checked={linkedCash}
-            onChange={(e) => setLinkedCash(e.target.checked)}
-          />
-          <span>
-            Trừ từ <b>tiền mặt VND</b> trong sổ (cần nạp VND trước nếu bật)
-          </span>
-        </label>
+        {mode === 'create' ? (
+          <label className="check-row">
+            <input
+              type="checkbox"
+              checked={linkedCash}
+              onChange={(e) => setLinkedCash(e.target.checked)}
+            />
+            <span>
+              Trừ từ <b>tiền mặt VND</b> trong sổ (cần nạp VND trước). Bật rồi thì{' '}
+              <b>không</b> rút tay thêm ở Nạp/Rút.
+            </span>
+          </label>
+        ) : null}
         <div className="field">
           <label>Ghi chú</label>
           <input
             value={note}
             onChange={(e) => setNote(e.target.value)}
-            style={{ fontSize: 16, fontWeight: 600 }}
+            className="field-control-sm"
           />
         </div>
       </div>
@@ -306,26 +505,70 @@ export function SavingsForm() {
       <div className="summary">
         <div className="r">
           <span>Số tiền gửi</span>
-          <span>{formatMoneyInput(principal) || '0'} đ</span>
+          <span className="num">{fmtVnd(pNum)}</span>
+        </div>
+        <div className="r">
+          <span>Lãi suất</span>
+          <span className="num">{fmtNum(rateNum, 2)}%/năm</span>
+        </div>
+        <div className="r">
+          <span>Lãi tạm tính (đến hôm nay)</span>
+          <span className="num up">+{fmtVnd(accruedPreview)}</span>
+        </div>
+        <div className="r">
+          <span>Lợi nhuận cuối kỳ</span>
+          <span className="num up">
+            {maturityPreview > 0 ? `+${fmtVnd(maturityPreview)}` : '—'}
+          </span>
         </div>
         <div className="total">
-          <span className="k">Ghi nhận</span>
-          <span className="v num">{formatMoneyInput(principal) || '0'}đ</span>
+          <span className="k">Nhận về cuối kỳ (gốc + lãi)</span>
+          <span className="v num">
+            {maturityPreview > 0 ? fmtVnd(endTotal) : fmtVnd(pNum)}
+          </span>
         </div>
       </div>
 
       {err && <div className="error">{err}</div>}
       <button
         className="btn-primary"
+        type="button"
         onClick={() => {
+          if (!(pNum > 0)) {
+            setErr('Số tiền gửi phải > 0')
+            return
+          }
+          if (!(rateNum > 0)) {
+            setErr('Nhập lãi suất %/năm (vd 9,5)')
+            return
+          }
+          if (mode === 'edit' && existing) {
+            const res = updateSavings(existing.id, {
+              name,
+              bank,
+              principal: pNum,
+              rateAnnual: rateNum,
+              startDate: startIso,
+              maturityDate: noTerm ? null : maturity,
+              termMonths: termM,
+              note: note || undefined,
+            })
+            if (!res.ok) {
+              setErr(res.error)
+              return
+            }
+            showToast('Đã cập nhật khoản tiết kiệm')
+            setScreen('savings-detail', existing.id, { replace: true })
+            return
+          }
           const res = addSavings({
             name,
             bank,
-            principal: moneyNum(principal),
-            rateAnnual: Number(rate) || 0,
-            startDate: new Date(start + 'T12:00:00').toISOString(),
+            principal: pNum,
+            rateAnnual: rateNum,
+            startDate: startIso,
             maturityDate: noTerm ? null : maturity,
-            termMonths: noTerm ? null : Number(term) || null,
+            termMonths: termM,
             note: note || undefined,
             linkedCash,
           })
@@ -337,12 +580,11 @@ export function SavingsForm() {
           setScreen('savings-detail', res.id)
         }}
       >
-        Lưu khoản tiết kiệm
+        {mode === 'edit' ? 'Lưu thay đổi' : 'Lưu khoản tiết kiệm'}
       </button>
     </div>
   )
 }
-
 
 export function SavingsDetail({ privacy }: { privacy: boolean }) {
   const id = useStore((s) => s.detailAssetId)
@@ -361,7 +603,8 @@ export function SavingsDetail({ privacy }: { privacy: boolean }) {
     return (
       <div className="scroll plain">
         <button className="back" onClick={() => setScreen('savings')}>
-          ‹ Tiết kiệm
+          <AppIcon name="arrow-left" size={18} />
+          Tiết kiệm
         </button>
         <div className="empty">
           <h3>Không tìm thấy</h3>
@@ -370,45 +613,93 @@ export function SavingsDetail({ privacy }: { privacy: boolean }) {
     )
   }
 
-  const interest = estimateInterest(
-    s.principal,
-    s.rateAnnual,
-    s.startDate,
-    s.status === 'closed' ? s.updatedAt : undefined,
+  const history = Array.isArray(s.history) ? s.history : []
+  const displayPrincipal =
+    s.status === 'closed'
+      ? s.closedPrincipal ?? s.principal
+      : s.principal
+  const accrued = Math.round(
+    estimateInterest(
+      s.status === 'closed' ? displayPrincipal : s.principal,
+      s.rateAnnual,
+      s.startDate,
+      s.status === 'closed' ? s.closedAt || s.updatedAt : undefined,
+    ),
   )
-  const suggestClose = Math.round(s.principal + interest)
-  const closeDisplay = closeTouched
-    ? closeAmt
-    : String(suggestClose)
+  const maturityInterest = Math.round(
+    estimateMaturityInterest(
+      s.status === 'closed' ? displayPrincipal : s.principal,
+      s.rateAnnual,
+      s.startDate,
+      s.maturityDate,
+      s.termMonths,
+    ),
+  )
+  // Gợi ý tất toán: ưu tiên lãi tạm; nếu 0 ngày thì gợi ý cuối kỳ
+  const interestForClose =
+    accrued > 0 ? accrued : maturityInterest > 0 ? maturityInterest : 0
+  const suggestClose = Math.round(s.principal + interestForClose)
+  const closeDisplay = closeTouched ? closeAmt : String(suggestClose)
   const due = daysUntil(s.maturityDate)
 
   return (
     <div className="scroll plain">
       <div className="nav">
         <button className="back" onClick={() => setScreen('savings')}>
-          ‹ Tiết kiệm
+          <AppIcon name="arrow-left" size={18} />
+          Tiết kiệm
         </button>
         <div className="mid">{s.name}</div>
-        <div style={{ minWidth: 64 }} />
+        {s.status === 'active' ? (
+          <button
+            type="button"
+            className="link-btn"
+            onClick={() => setScreen('savings-edit', s.id)}
+          >
+            Sửa
+          </button>
+        ) : (
+          <div className="nav-spacer" />
+        )}
       </div>
 
       <div className="sav-detail-hero">
         <div className="pill sav-status-pill">
           {s.status === 'active' ? 'Đang gửi' : 'Đã tất toán'} · {s.bank}
         </div>
-        <div className="k">Gốc</div>
-        <div className="big num">
-          {mask(privacy, fmtVnd(s.principal))}
-          <small>đ</small>
+        <div className="k">
+          {s.status === 'closed' ? 'Gốc (lúc tất toán)' : 'Gốc'}
         </div>
-        <div className="sav-detail-row">
+        <div className="big num">
+          {mask(privacy, fmtVnd(displayPrincipal))}
+        </div>
+        {s.status === 'closed' && s.closedAmountBack != null ? (
+          <p className="sav-maturity-hint">
+            Nhận về:{' '}
+            <b className="num">
+              {mask(privacy, fmtVnd(s.closedAmountBack))}
+            </b>
+            {s.closedAt
+              ? ` · ${new Date(s.closedAt).toLocaleString('vi-VN')}`
+              : ''}
+          </p>
+        ) : null}
+        <div className="sav-detail-row sav-detail-row--4">
           <div>
             <div className="k">Lãi suất</div>
             <div className="v num">{fmtNum(s.rateAnnual, 2)}%/năm</div>
           </div>
           <div>
-            <div className="k">Lãi ước tính</div>
-            <div className="v num up">+{mask(privacy, fmtVnd(interest))}đ</div>
+            <div className="k">Lãi tạm tính</div>
+            <div className="v num up">+{mask(privacy, fmtVnd(accrued))}</div>
+          </div>
+          <div>
+            <div className="k">Lợi nhuận cuối kỳ</div>
+            <div className="v num up">
+              {maturityInterest > 0
+                ? `+${mask(privacy, fmtVnd(maturityInterest))}`
+                : '—'}
+            </div>
           </div>
           <div>
             <div className="k">Đáo hạn</div>
@@ -419,6 +710,16 @@ export function SavingsDetail({ privacy }: { privacy: boolean }) {
             </div>
           </div>
         </div>
+        {maturityInterest > 0 ? (
+          <p className="sav-maturity-hint">
+            Cuối kỳ ≈ gốc + lãi:{' '}
+            <b className="num">
+              {mask(privacy, fmtVnd(s.principal + maturityInterest))}
+            </b>
+            {' · '}
+            công thức lãi đơn: gốc × %/năm × số ngày / 365
+          </p>
+        ) : null}
         {due != null && (
           <div className={`sav-due-banner ${due <= 30 ? 'warn' : ''} ${due < 0 ? 'over' : ''}`}>
             {due < 0
@@ -434,7 +735,7 @@ export function SavingsDetail({ privacy }: { privacy: boolean }) {
         <div className="card">
           <div className="field">
             <label>Ghi chú</label>
-            <div style={{ fontSize: 15 }}>{s.note}</div>
+            <div className="text-sm">{s.note}</div>
           </div>
         </div>
       )}
@@ -456,7 +757,7 @@ export function SavingsDetail({ privacy }: { privacy: boolean }) {
               />
               <div className="hint">
                 Gợi ý gốc + lãi ước:{' '}
-                <b>{fmtVnd(suggestClose)} đ</b>
+                <b>{fmtVnd(suggestClose)}</b>
               </div>
             </div>
             <label className="check-row">
@@ -465,29 +766,38 @@ export function SavingsDetail({ privacy }: { privacy: boolean }) {
                 checked={linkCash}
                 onChange={(e) => setLinkCash(e.target.checked)}
               />
-              <span>Cộng vào tiền mặt VND trong sổ</span>
+              <span>
+                Cộng vào tiền mặt VND trong sổ · không nạp tay thêm nếu đã bật
+              </span>
             </label>
           </div>
 
           <div className="summary">
             <div className="r">
               <span>Gốc</span>
-              <span>{fmtVnd(s.principal)} đ</span>
+              <span className="num">{fmtVnd(s.principal)}</span>
             </div>
             <div className="r">
-              <span>Lãi ước</span>
-              <span>+{fmtVnd(interest)} đ</span>
+              <span>Lãi tạm tính (đến hôm nay)</span>
+              <span className="num up">+{fmtVnd(accrued)}</span>
+            </div>
+            <div className="r">
+              <span>Lợi nhuận cuối kỳ</span>
+              <span className="num up">
+                {maturityInterest > 0 ? `+${fmtVnd(maturityInterest)}` : '—'}
+              </span>
             </div>
             <div className="total">
-              <span className="k">Nhận về</span>
+              <span className="k">Nhận về (nhập tay)</span>
               <span className="v num">
-                {formatMoneyInput(closeDisplay) || '0'}đ
+                {formatMoneyInput(closeDisplay) || '0'}
               </span>
             </div>
           </div>
 
           <button
             className="btn-primary"
+            type="button"
             onClick={() => {
               const amountBack = moneyNum(closeDisplay) || suggestClose
               const res = closeSavings({
@@ -501,7 +811,9 @@ export function SavingsDetail({ privacy }: { privacy: boolean }) {
                 return
               }
               showToast('Đã tất toán')
-              setScreen('savings')
+              // Ở lại chi tiết để xem lịch sử tất toán
+              setCloseTouched(false)
+              setCloseAmt('')
             }}
           >
             Tất toán khoản này
@@ -509,10 +821,38 @@ export function SavingsDetail({ privacy }: { privacy: boolean }) {
         </>
       )}
 
+      <div className="sec">
+        <h2>Lịch sử</h2>
+      </div>
+      <div className="group sav-history">
+        {history.length === 0 ? (
+          <div className="row row-muted cursor-default">
+            Chưa có lịch sử. Mở sổ / sửa / tất toán sẽ hiện ở đây.
+          </div>
+        ) : (
+          [...history].reverse().map((e) => (
+            <div className="row cursor-default" key={e.id}>
+              <div className="body">
+                <div className="t">
+                  {savingsEventLabel(e)}
+                  {e.amount != null && e.amount > 0
+                    ? ` · ${fmtVnd(e.amount)}`
+                    : ''}
+                </div>
+                <div className="d">
+                  {new Date(e.at).toLocaleString('vi-VN')}
+                  {e.note ? ` · ${e.note}` : ''}
+                </div>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+
       {err && <div className="error">{err}</div>}
       <button
-        className="btn-secondary"
-        style={{ color: 'var(--down)', marginTop: 16 }}
+        className="btn-secondary btn-danger"
+        type="button"
         onClick={() => {
           if (confirm('Xoá khoản tiết kiệm này khỏi sổ?')) {
             deleteSavings(s.id)
@@ -528,5 +868,4 @@ export function SavingsDetail({ privacy }: { privacy: boolean }) {
 }
 
 /* ========== CHO VAY ========== */
-
 

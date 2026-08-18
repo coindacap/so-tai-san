@@ -10,6 +10,7 @@ import {
   moneyNum,
 } from '../lib/format'
 import { MoneyInput } from '../components/MoneyInput'
+import { AppIcon } from '../components/AppIcon'
 import { mask, pctClass } from '../lib/ui'
 
 export function GoldDetail({ privacy }: { privacy: boolean }) {
@@ -24,10 +25,11 @@ export function GoldDetail({ privacy }: { privacy: boolean }) {
       <div className="scroll plain">
         <div className="nav">
           <button type="button" className="back" onClick={() => setScreen('home')}>
-            ‹ Tài sản
+            <AppIcon name="arrow-left" size={18} />
+            Tài sản
           </button>
         </div>
-        <div className="empty" style={{ paddingTop: 40 }}>
+        <div className="empty pt-xl">
           <h3>Không thấy nhẫn 9999</h3>
         </div>
       </div>
@@ -44,7 +46,8 @@ export function GoldDetail({ privacy }: { privacy: boolean }) {
     <div className="scroll plain">
       <div className="nav">
         <button type="button" className="back" onClick={() => setScreen('home')}>
-          ‹ Tài sản
+          <AppIcon name="arrow-left" size={18} />
+          Tài sản
         </button>
         <div className="mid">Nhẫn 9999</div>
         <button className="link-btn" onClick={() => setScreen('prices')}>
@@ -62,7 +65,7 @@ export function GoldDetail({ privacy }: { privacy: boolean }) {
         <div className="stat">
           <div className="k">Giá vốn TB</div>
           <div className="v num">
-            {mask(privacy, pos.avgCost != null ? fmtVnd(pos.avgCost) : '—')}
+            {mask(privacy, pos.avgCost != null ? fmtVnd(pos.avgCost) : 'Chưa có')}
           </div>
         </div>
         <div className="stat">
@@ -98,17 +101,17 @@ export function GoldDetail({ privacy }: { privacy: boolean }) {
           Bán
         </button>
       </div>
-      <div className="sec" style={{ marginTop: 4 }}>
+      <div className="sec sec-tight">
         <h2>Lịch sử</h2>
       </div>
       <div className="group">
         {txs.length === 0 && (
-          <div className="row" style={{ color: 'var(--muted)' }}>
+          <div className="row row-muted">
             Chưa có giao dịch
           </div>
         )}
         {[...txs].reverse().map((t) => (
-          <div key={t.id} className="row" style={{ cursor: 'default' }}>
+          <div className="row cursor-default" key={t.id}>
             <div className="body">
               <div className="t">
                 {t.side === 'in' ? 'Mua' : 'Bán'} {fmtNum(t.qty, 2)} chỉ
@@ -127,7 +130,6 @@ export function GoldDetail({ privacy }: { privacy: boolean }) {
     </div>
   )
 }
-
 
 export function BuyGold() {
   const tradeGold = useStore((s) => s.tradeGold)
@@ -152,25 +154,26 @@ export function BuyGold() {
     <div className="scroll plain">
       <div className="nav">
         <button className="back" onClick={() => setScreen('gold')}>
-          ‹ Huỷ
+          <AppIcon name="arrow-left" size={18} />
+          Huỷ
         </button>
         <div className="mid">Mua nhẫn</div>
-        <div style={{ minWidth: 64 }} />
+        <div className="nav-spacer" />
       </div>
       <div className="asset-fixed">
-        <div className="mark gold" style={{ width: 40, height: 40 }}>
+        <div className="mark gold mark-40">
           N
         </div>
         <div>
-          <div className="t" style={{ fontWeight: 650 }}>
+          <div className="t switch-title">
             Vàng nhẫn 9999
           </div>
-          <div className="d" style={{ fontSize: 12, color: 'var(--muted)' }}>
+          <div className="d switch-desc">
             Cố định · không chọn loại khác
           </div>
         </div>
       </div>
-      <div className="sec" style={{ marginTop: 4 }}>
+      <div className="sec sec-tight">
         <h2>Số chỉ</h2>
       </div>
       <div className="presets">
@@ -205,7 +208,7 @@ export function BuyGold() {
         </div>
         <div className="field">
           <label>Giá bán ra tiệm</label>
-          <MoneyInput value={price} onChange={setPrice} unit="đ/chỉ" />
+          <MoneyInput value={price} onChange={setPrice} unit="chỉ" />
           <div className="hint">Mua ngoài tiệm = trả giá bán ra</div>
         </div>
         <div className="field">
@@ -217,7 +220,7 @@ export function BuyGold() {
           <input
             value={venue}
             onChange={(e) => setVenue(e.target.value)}
-            style={{ fontSize: 17, fontWeight: 600 }}
+            className="field-control"
           />
         </div>
         <div className="field">
@@ -226,7 +229,7 @@ export function BuyGold() {
             type="datetime-local"
             value={when}
             onChange={(e) => setWhen(e.target.value)}
-            style={{ fontSize: 16, fontWeight: 600 }}
+            className="field-control-sm"
           />
         </div>
       </div>
@@ -247,13 +250,13 @@ export function BuyGold() {
         </div>
         <div className="total">
           <span className="k">Thành tiền</span>
-          <span className="v num">{fmtVnd(total)}đ</span>
+          <span className="v num">{fmtVnd(total)}</span>
         </div>
       </div>
       {err && <div className="error">{err}</div>}
       <button
         className="btn-primary"
-        onClick={() => {
+          onClick={() => {
           const res = tradeGold({
             side: 'buy',
             chi: q,
@@ -275,7 +278,6 @@ export function BuyGold() {
     </div>
   )
 }
-
 
 export function SellGold() {
   const tradeGold = useStore((s) => s.tradeGold)
@@ -307,10 +309,11 @@ export function SellGold() {
       <div className="scroll plain">
         <div className="nav">
           <button type="button" className="back" onClick={() => setScreen('home')}>
-            ‹ Về trang chủ
+            <AppIcon name="arrow-left" size={18} />
+            Về trang chủ
           </button>
         </div>
-        <div className="empty" style={{ paddingTop: 40 }}>
+        <div className="empty pt-xl">
           <h3>Không thấy nhẫn 9999</h3>
           <button type="button" className="btn-primary" onClick={() => setScreen('home')}>
             Về trang chủ
@@ -324,15 +327,16 @@ export function SellGold() {
     <div className="scroll plain">
       <div className="nav">
         <button className="back" onClick={() => setScreen('gold')}>
-          ‹ Huỷ
+          <AppIcon name="arrow-left" size={18} />
+          Huỷ
         </button>
         <div className="mid">Bán nhẫn</div>
-        <div style={{ minWidth: 64 }} />
+        <div className="nav-spacer" />
       </div>
       <div className="card">
         <div className="field">
           <label>Hold hiện có</label>
-          <div className="num" style={{ fontSize: 20, fontWeight: 750 }}>
+          <div className="num amount-lg">
             {fmtNum(hold, 2)} chỉ
           </div>
         </div>
@@ -369,16 +373,16 @@ export function SellGold() {
         </div>
         <div className="field">
           <label>Giá mua vào tiệm</label>
-          <MoneyInput value={price} onChange={setPrice} unit="đ/chỉ" />
+          <MoneyInput value={price} onChange={setPrice} unit="chỉ" />
           <div className="hint">Bán lại tiệm = nhận giá mua vào</div>
         </div>
         <div className="field">
           <label>Tiệm</label>
-          <input value={venue} onChange={(e) => setVenue(e.target.value)} style={{ fontSize: 17, fontWeight: 600 }} />
+          <input value={venue} onChange={(e) => setVenue(e.target.value)} className="field-control" />
         </div>
         <div className="field">
           <label>Thời gian</label>
-          <input type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} style={{ fontSize: 16, fontWeight: 600 }} />
+          <input type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} className="field-control-sm" />
         </div>
       </div>
       <div className="summary">
@@ -388,13 +392,13 @@ export function SellGold() {
         </div>
         <div className="total">
           <span className="k">Tiền nhận</span>
-          <span className="v num">{fmtVnd(total)}đ</span>
+          <span className="v num">{fmtVnd(total)}</span>
         </div>
       </div>
       {err && <div className="error">{err}</div>}
       <button
         className="btn-primary"
-        onClick={() => {
+          onClick={() => {
           const res = tradeGold({
             side: 'sell',
             chi: q,
@@ -415,5 +419,4 @@ export function SellGold() {
     </div>
   )
 }
-
 

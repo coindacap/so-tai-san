@@ -29,7 +29,7 @@ function seedAssets(now: string): Asset[] {
       assetClass: 'cash',
       symbol: 'VND',
       name: 'Tiền mặt VND',
-      unit: 'đ',
+      unit: 'VND',
       quoteCurrency: 'VND',
       isBridge: false,
       isSeed: true,
@@ -80,13 +80,13 @@ function rateAnnualFromLoan(
     const annual = (interestValue / 1_000_000) * 365 * 100
     return {
       rateAnnual: Math.round(annual * 100) / 100,
-      noteExtra: `Lãi ${interestValue}đ/triệu/ngày`,
+      noteExtra: `Lãi ${interestValue}/triệu/ngày`,
     }
   }
   if (interestType === 'flat_monthly') {
     return {
       rateAnnual: 0,
-      noteExtra: `Lãi cố định ${Number(interestValue).toLocaleString('vi-VN')}đ/tháng`,
+      noteExtra: `Lãi cố định ${Number(interestValue).toLocaleString('vi-VN')}/tháng`,
     }
   }
   return { rateAnnual: 0, noteExtra: '' }
@@ -237,6 +237,15 @@ export function convertTaiChinhBackup(raw: unknown): {
       status: 'active',
       note: d.note ? String(d.note) : undefined,
       linkedCash: false,
+      history: [
+        {
+          id: uid(),
+          type: 'open' as const,
+          at: startDate,
+          amount: principal,
+          note: 'Import · mở sổ',
+        },
+      ],
       createdAt: startDate,
       updatedAt: now,
     })

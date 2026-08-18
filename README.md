@@ -49,6 +49,8 @@ SQL Editor → dán nội dung file `supabase/schema.sql` → Run.
 
 **Authentication → Providers → Email → Confirm email = OFF**
 
+Cloud chỉ đăng nhập **email + mật khẩu** (PWA iPhone cũng dùng được). Tab **Quên MK** gửi mail đặt lại mật khẩu.
+
 ### 4. Env local
 
 ```bash
@@ -70,7 +72,7 @@ Redeploy production.
 
 **Cài đặt → Cloud · đồng bộ máy**
 
-- Tạo tài khoản / đăng nhập (cùng email trên iPhone + Mac)
+- Tạo tài khoản / đăng nhập **mật khẩu** cùng email trên iPhone + Mac
 - Sửa sổ → tự đẩy cloud ~2,5 giây
 - Máy mới: đăng nhập → tải sổ từ cloud
 
@@ -94,6 +96,13 @@ Mở `http://<IP-Mac>:5173` (chỉ dev; production dùng HTTPS Vercel).
 
 ```bash
 npm run build
+```
+
+## Test
+
+```bash
+npm test          # chạy 1 lần
+npm run test:watch  # theo dõi khi sửa code
 ```
 
 Deploy:

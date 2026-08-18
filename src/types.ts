@@ -29,6 +29,8 @@ export interface Transaction {
   counterQty: number
   /** VND cost locked into this leg (for crypto bought with USDT) */
   counterCostVnd?: number
+  /** Signed change to open cost basis without changing the held quantity */
+  costBasisDeltaNative?: number
   /**
    * Cùng pairId = 2 leg của 1 giao dịch (mua vàng/coin, đổi USDT…).
    * Xóa/sửa note theo cặp để không orphan hold.
@@ -37,6 +39,8 @@ export interface Transaction {
   tradedAt: string
   venue?: string
   note?: string
+  /** Id lệnh sàn (vd. binance:c2c:…) — chống nhập trùng */
+  externalId?: string
   createdAt: string
   updatedAt: string
 }
@@ -126,12 +130,26 @@ export interface ExpenseBudget {
   updatedAt: string
 }
 
+export type SavingsEventType = 'open' | 'topup' | 'edit' | 'close'
+
+/** Lịch sử mở / gửi thêm / sửa / tất toán */
+export interface SavingsEvent {
+  id: string
+  type: SavingsEventType
+  at: string
+  /** Số tiền liên quan (gốc gửi thêm, số nhận về khi tất toán, Δ gốc khi sửa…) */
+  amount?: number
+  /** Gốc trước thao tác (tất toán / sửa) */
+  principalBefore?: number
+  note?: string
+}
+
 /** Sổ tiết kiệm ngân hàng / quỹ */
 export interface SavingsAccount {
   id: string
   name: string
   bank: string
-  /** Số dư gốc hiện tại (VND) */
+  /** Số dư gốc hiện tại (VND) — 0 sau tất toán */
   principal: number
   /** Lãi suất %/năm */
   rateAnnual: number
@@ -143,26 +161,40 @@ export interface SavingsAccount {
   note?: string
   /** Có trừ/cộng tiền mặt VND khi mở/đóng */
   linkedCash: boolean
+  /** Lịch sử thao tác (mở / sửa / tất toán…) */
+  history: SavingsEvent[]
+  /** Gốc lúc tất toán (để xem lại) */
+  closedPrincipal?: number
+  /** Số nhận về khi tất toán */
+  closedAmountBack?: number
+  closedAt?: string | null
   createdAt: string
   updatedAt: string
 }
 
-export type LoanPaymentType = 'principal' | 'interest'
+export type LoanPaymentType =
+  | 'principal'
+  | 'interest'
+  | 'edit'
+  | 'write_off'
 
 export interface LoanPayment {
   id: string
   amount: number
   paidAt: string
   note?: string
-  /** principal = thu gốc; interest = đóng lãi (không giảm remaining) */
+  /**
+   * principal = thu gốc; interest = đóng lãi;
+   * edit = sửa thông tin; write_off = xóa nợ
+   */
   type?: LoanPaymentType
 }
 
 export type LoanInterestType =
   | 'annual' // %/năm (rateAnnual)
   | 'percent_monthly' // %/tháng
-  | 'per_million_daily' // đ / triệu / ngày
-  | 'flat_monthly' // cố định đ/tháng
+  | 'per_million_daily' // / triệu / ngày
+  | 'flat_monthly' // cố định /tháng
 
 /** Khoản cho người khác vay */
 export interface Loan {
@@ -177,7 +209,7 @@ export interface Loan {
   rateAnnual: number
   /** Kiểu lãi gốc (để tính tạm tính đúng) */
   interestType?: LoanInterestType
-  /** Giá trị lãi theo interestType: %/tháng, đ/triệu/ngày, hoặc đ/tháng */
+  /** Giá trị lãi theo interestType: %/tháng, /triệu/ngày, hoặc /tháng */
   interestValue?: number
   /** Tổng lãi đã thu */
   interestPaid: number
@@ -216,6 +248,8 @@ export interface PositionView {
   marketValueVnd: number
   costOpenVnd: number
   unrealizedPnLVnd: number
+  /** P/L theo đơn vị báo giá (USDT cho coin, VND cho vàng) — không gồm chênh tỷ giá USDT/VND */
+  unrealizedPnLNative: number | null
   unrealizedPnLPct: number | null
   realizedPnLVnd: number
 }
@@ -231,12 +265,14 @@ export type Screen =
   | 'sell-gold'
   | 'usdt'
   | 'buy-coin'
+  | 'adjust-coin-cost'
   | 'sell-coin'
   | 'adjust-usdt'
   | 'prices'
   | 'cash'
   | 'savings'
   | 'savings-form'
+  | 'savings-edit'
   | 'savings-detail'
   | 'loans'
   | 'loan-form'

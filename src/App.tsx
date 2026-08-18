@@ -1,13 +1,14 @@
-import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { useStore } from './store/useStore'
-import { portfolioSummary } from './lib/calc'
 import { PasswordRecoveryGate } from './components/CloudSync'
 import { Tab } from './components/Tab'
 import { ErrorBoundary } from './components/ErrorBoundary'
+import { TradeSheet } from './components/TradeSheet'
 import { cloudReady, getCloudUser } from './lib/cloudSync'
 import { useAutoPrices } from './hooks/useAutoPrices'
 import { useCloudAutoSync } from './hooks/useCloudAutoSync'
 import { bindBrowserBack } from './lib/appHistory'
+import { StatePanel } from './components/StatePanel'
 
 const Onboarding = lazy(() =>
   import('./pages/Onboarding').then((m) => ({ default: m.Onboarding })),
@@ -38,6 +39,9 @@ const UsdtConvert = lazy(() =>
 )
 const BuyCoin = lazy(() =>
   import('./pages/TradeScreens').then((m) => ({ default: m.BuyCoin })),
+)
+const AdjustCoinCost = lazy(() =>
+  import('./pages/TradeScreens').then((m) => ({ default: m.AdjustCoinCost })),
 )
 const AdjustUsdt = lazy(() =>
   import('./pages/TradeScreens').then((m) => ({ default: m.AdjustUsdt })),
@@ -92,20 +96,24 @@ const SpendCategories = lazy(() =>
 
 function ScreenFallback() {
   return (
-    <div className="scroll plain" style={{ textAlign: 'center', paddingTop: 80 }}>
-      <div style={{ fontSize: 15, fontWeight: 650, color: 'var(--muted)' }}>
-        Đang tải…
-      </div>
+    <div className="scroll plain app-state-screen">
+      <StatePanel tone="loading" title="Đang tải…" compact />
     </div>
   )
 }
 
 export default function App() {
-  const store = useStore()
+  const screen = useStore((s) => s.screen)
+  const detailAssetId = useStore((s) => s.detailAssetId)
+  const toast = useStore((s) => s.toast)
+  const privacy = useStore((s) => s.settings.privacyMode)
+  const setScreen = useStore((s) => s.setScreen)
   const [ready, setReady] = useState(() => useStore.persist.hasHydrated())
   const [cloudLoggedIn, setCloudLoggedIn] = useState(false)
   /** Menu dưới: hiện khi kéo lên / đầu trang; ẩn nhẹ khi kéo xuống list dài */
   const [chromeVisible, setChromeVisible] = useState(true)
+  /** Sheet ➕ giao dịch tài sản (Home) */
+  const [tradeSheetOpen, setTradeSheetOpen] = useState(false)
 
   // Chờ localStorage load xong (tránh luôn rơi về onboarding trên iPhone)
   useEffect(() => {
@@ -145,42 +153,7 @@ export default function App() {
     return () => window.removeEventListener('so-cloud-auth', refresh)
   }, [])
   useCloudAutoSync(cloudLoggedIn)
-  // Giá coin/USDT Binance + vàng nhẫn ước lượng — tự refresh
-  useAutoPrices(ready && store.screen !== 'onboarding')
-
-  const summary = useMemo(
-    () =>
-      portfolioSummary({
-        assets: store.assets,
-        transactions: store.transactions,
-        quotes: store.quotes,
-        settings: store.settings,
-        savings: store.savings,
-        loans: store.loans,
-        version: store.version,
-      }),
-    [
-      store.assets,
-      store.transactions,
-      store.quotes,
-      store.settings,
-      store.savings,
-      store.loans,
-      store.version,
-    ],
-  )
-  const privacy = store.settings.privacyMode
-  const savingsTotal = store.savings
-    .filter((s) => s.status === 'active')
-    .reduce((a, s) => a + s.principal, 0)
-  const loansTotal = store.loans
-    .filter(
-      (l) =>
-        !l.deletedAt &&
-        (l.status === 'open' || l.status === 'partial') &&
-        l.remaining > 0,
-    )
-    .reduce((a, l) => a + l.remaining, 0)
+  useAutoPrices(ready && screen !== 'onboarding')
 
   const showTabs = [
     'home',
@@ -190,7 +163,7 @@ export default function App() {
     'spend',
     'savings',
     'loans',
-  ].includes(store.screen)
+  ].includes(screen)
 
   // Chặn Safari “Back” ra trang web cũ; map popstate → goBack trong app
   useEffect(() => {
@@ -225,10 +198,11 @@ export default function App() {
       } as EventListenerOptions)
   }, [])
 
-  // Đổi màn → luôn hiện menu
+  // Đổi màn → luôn hiện menu; đóng sheet giao dịch
   useEffect(() => {
     setChromeVisible(true)
-  }, [store.screen])
+    setTradeSheetOpen(false)
+  }, [screen])
 
   // Vuốt từ trái → phải = quay lại (nhạy hơn, không cần kéo mạnh)
   useEffect(() => {
@@ -251,7 +225,8 @@ export default function App() {
 
     const resetVisual = (animate = true) => {
       if (animate) {
-        el.style.transition = 'transform 0.22s cubic-bezier(0.22,1,0.36,1)'
+        el.style.transition =
+          'transform var(--dur-short) var(--ease-out)'
       } else {
         el.style.transition = 'none'
       }
@@ -266,6 +241,11 @@ export default function App() {
       }
     }
 
+    const moveOpts: AddEventListenerOptions = { passive: false }
+    const bindMove = () => el.addEventListener('touchmove', onMove, moveOpts)
+    const unbindMove = () =>
+      el.removeEventListener('touchmove', onMove, moveOpts)
+
     const onStart = (e: Event) => {
       const te = e as TouchEvent
       if (te.touches.length !== 1) return
@@ -274,11 +254,13 @@ export default function App() {
       startX = t.clientX
       startY = t.clientY
       startT = Date.now()
-      // Bắt từ mép trái rộng (dễ chạm iPhone + PWA)
       tracking = startX <= edgePx
       decided = false
       isHoriz = false
-      if (tracking) el.style.transition = 'none'
+      if (tracking) {
+        el.style.transition = 'none'
+        bindMove()
+      }
     }
 
     const onMove = (e: Event) => {
@@ -291,10 +273,10 @@ export default function App() {
       if (!decided) {
         if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return
         decided = true
-        // Ưu tiên ngang khi kéo sang phải rõ
         isHoriz = dx > 4 && Math.abs(dx) >= Math.abs(dy) * 0.85
         if (!isHoriz) {
           tracking = false
+          unbindMove()
           resetVisual(false)
           return
         }
@@ -307,13 +289,13 @@ export default function App() {
         te.preventDefault()
         const pull = Math.min(dx * 0.72, Math.min(160, window.innerWidth * 0.4))
         el.style.transform = `translate3d(${pull}px,0,0)`
-        el.style.boxShadow =
-          pull > 6 ? '-6px 0 20px rgba(0,0,0,0.1)' : ''
+        el.style.boxShadow = pull > 6 ? 'var(--shadow-floating)' : ''
       }
     }
 
     const finishBack = () => {
-      el.style.transition = 'transform 0.16s ease-out'
+      el.style.transition =
+        'transform var(--dur-micro) var(--ease-out)'
       el.style.transform = `translate3d(${Math.min(window.innerWidth, 420)}px,0,0)`
       window.setTimeout(() => {
         const went = useStore.getState().goBack()
@@ -325,6 +307,7 @@ export default function App() {
     }
 
     const onEnd = (e: Event) => {
+      unbindMove()
       if (!tracking) return
       tracking = false
       const te = e as TouchEvent
@@ -349,6 +332,7 @@ export default function App() {
     }
 
     const onCancel = () => {
+      unbindMove()
       tracking = false
       isHoriz = false
       decided = false
@@ -356,13 +340,11 @@ export default function App() {
     }
 
     el.addEventListener('touchstart', onStart, { passive: true })
-    // passive:false để preventDefault khi vuốt ngang
-    el.addEventListener('touchmove', onMove, { passive: false })
     el.addEventListener('touchend', onEnd, { passive: true })
     el.addEventListener('touchcancel', onCancel, { passive: true })
     return () => {
+      unbindMove()
       el.removeEventListener('touchstart', onStart)
-      el.removeEventListener('touchmove', onMove)
       el.removeEventListener('touchend', onEnd)
       el.removeEventListener('touchcancel', onCancel)
       el.style.transform = ''
@@ -374,10 +356,8 @@ export default function App() {
   if (!ready) {
     return (
       <div className="app">
-        <div className="scroll plain" style={{ textAlign: 'center', paddingTop: 80 }}>
-          <div style={{ fontSize: 15, fontWeight: 650, color: 'var(--muted)' }}>
-            Đang tải sổ…
-          </div>
+        <div className="scroll plain app-state-screen">
+          <StatePanel tone="loading" title="Đang tải sổ…" compact />
         </div>
       </div>
     )
@@ -396,69 +376,78 @@ export default function App() {
         }
       >
         <Suspense fallback={<ScreenFallback />}>
-          {store.screen === 'onboarding' && <Onboarding />}
-          {store.screen === 'home' && (
-            <Home
-              summary={summary}
-              privacy={privacy}
-              onSheet={() => store.setScreen('spend-form', 'expense')}
-              savingsTotal={savingsTotal}
-              loansTotal={loansTotal}
+          {screen === 'onboarding' && <Onboarding />}
+          {screen === 'home' && (
+            <Home onOpenTradeSheet={() => setTradeSheetOpen(true)} />
+          )}
+          {screen === 'assets' && <Assets />}
+          {screen === 'history' && <History />}
+          {screen === 'settings' && <Settings />}
+          {screen === 'gold' && <GoldDetail privacy={privacy} />}
+          {screen === 'asset-detail' && <AssetDetail privacy={privacy} />}
+          {screen === 'buy-gold' && <BuyGold />}
+          {screen === 'sell-gold' && <SellGold />}
+          {screen === 'usdt' && <UsdtConvert />}
+          {screen === 'buy-coin' && <BuyCoin />}
+          {screen === 'adjust-coin-cost' && (
+            <AdjustCoinCost key={detailAssetId || 'adjust-coin-cost'} />
+          )}
+          {screen === 'sell-coin' && <SellCoin />}
+          {screen === 'adjust-usdt' && <AdjustUsdt />}
+          {screen === 'prices' && <Prices />}
+          {screen === 'cash' && <CashAdjust />}
+          {screen === 'savings' && <SavingsList privacy={privacy} />}
+          {screen === 'savings-form' && (
+            <SavingsForm mode="create" key="sav-create" />
+          )}
+          {screen === 'savings-edit' && (
+            <SavingsForm
+              mode="edit"
+              key={detailAssetId || 'sav-edit'}
             />
           )}
-          {store.screen === 'assets' && (
-            <Assets summary={summary} privacy={privacy} />
-          )}
-          {store.screen === 'history' && <History />}
-          {store.screen === 'settings' && <Settings />}
-          {store.screen === 'gold' && <GoldDetail privacy={privacy} />}
-          {store.screen === 'asset-detail' && <AssetDetail privacy={privacy} />}
-          {store.screen === 'buy-gold' && <BuyGold />}
-          {store.screen === 'sell-gold' && <SellGold />}
-          {store.screen === 'usdt' && <UsdtConvert />}
-          {store.screen === 'buy-coin' && <BuyCoin />}
-          {store.screen === 'sell-coin' && <SellCoin />}
-          {store.screen === 'adjust-usdt' && <AdjustUsdt />}
-          {store.screen === 'prices' && <Prices />}
-          {store.screen === 'cash' && <CashAdjust />}
-          {store.screen === 'savings' && <SavingsList privacy={privacy} />}
-          {store.screen === 'savings-form' && <SavingsForm />}
-          {store.screen === 'savings-detail' && (
+          {screen === 'savings-detail' && (
             <SavingsDetail privacy={privacy} />
           )}
-          {store.screen === 'loans' && <LoansList privacy={privacy} />}
-          {store.screen === 'loan-form' && (
+          {screen === 'loans' && <LoansList privacy={privacy} />}
+          {screen === 'loan-form' && (
             <LoanForm mode="create" key="loan-create" />
           )}
-          {store.screen === 'loan-edit' && (
-            <LoanForm mode="edit" key={store.detailAssetId || 'loan-edit'} />
+          {screen === 'loan-edit' && (
+            <LoanForm mode="edit" key={detailAssetId || 'loan-edit'} />
           )}
-          {store.screen === 'loan-detail' && <LoanDetail privacy={privacy} />}
-          {store.screen === 'loans-trash' && <LoansTrash privacy={privacy} />}
-          {store.screen === 'spend' && <SpendHome privacy={privacy} />}
-          {store.screen === 'spend-form' && <SpendForm />}
-          {store.screen === 'spend-detail' && (
+          {screen === 'loan-detail' && <LoanDetail privacy={privacy} />}
+          {screen === 'loans-trash' && <LoansTrash privacy={privacy} />}
+          {screen === 'spend' && <SpendHome privacy={privacy} />}
+          {screen === 'spend-form' && <SpendForm />}
+          {screen === 'spend-detail' && (
             <SpendDetail privacy={privacy} />
           )}
-          {store.screen === 'spend-categories' && <SpendCategories />}
+          {screen === 'spend-categories' && <SpendCategories />}
         </Suspense>
       </ErrorBoundary>
+
+      <TradeSheet
+        open={tradeSheetOpen}
+        onClose={() => setTradeSheetOpen(false)}
+        onPick={(s, id) => setScreen(s, id)}
+      />
 
       {showTabs && (
         <nav
           className={`tabbar tabbar-5${chromeVisible ? '' : ' is-away'}`}
-          aria-hidden={!chromeVisible}
+          aria-hidden={!chromeVisible || tradeSheetOpen}
+          inert={!chromeVisible || tradeSheetOpen}
         >
-          <Tab id="spend" label="Chi tiêu" ico="◈" />
-          <Tab id="loans" label="Cho vay" ico="◎" />
-          <Tab id="savings" label="Tiết kiệm" ico="▣" />
-          <Tab id="home" label="Tài sản" ico="◆" />
-          <Tab id="settings" label="Cài đặt" ico="⚙" />
+          <Tab id="spend" label="Chi tiêu" icon="expense" />
+          <Tab id="loans" label="Cho vay" icon="loans" />
+          <Tab id="savings" label="Tiết kiệm" icon="savings" />
+          <Tab id="home" label="Tài sản" icon="assets" />
+          <Tab id="settings" label="Cài đặt" icon="settings" />
         </nav>
       )}
 
-      {store.toast && <div className="toast">{store.toast}</div>}
+      {toast && <div className="toast">{toast}</div>}
     </div>
   )
 }
-
